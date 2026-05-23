@@ -1,0 +1,2589 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>D2 ARMORY · Manifest + Guardian</title>
+<style>
+:root {
+  --bg: #0b0e13;
+  --panel: #131822;
+  --panel2: #1a2030;
+  --line: #2a3245;
+  --text: #e7e9ee;
+  --muted: #8893a8;
+  --accent: #ff7b00;
+  --good: #5fd970;
+  --bad: #ff6b6b;
+  --kinetic: #d4d4d4;
+  --arc: #79bbff;
+  --solar: #ff7b00;
+  --void: #b084eb;
+  --stasis: #4d88ff;
+  --strand: #5fd970;
+  --tier-1: #c3bcb4;
+  --tier-2: #c3bcb4;
+  --tier-3: #366f3c;
+  --tier-4: #5076a3;
+  --tier-5: #522f65;
+  --tier-6: #cdac00;
+  --class-titan: #cd3f3f;
+  --class-hunter: #e2c770;
+  --class-warlock: #b084eb;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Hiragino Kaku Gothic ProN", sans-serif; -webkit-font-smoothing: antialiased; }
+body { display: flex; flex-direction: column; }
+button { font-family: inherit; cursor: pointer; }
+
+header {
+  padding: 10px 16px; border-bottom: 1px solid var(--line);
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+header h1 { margin: 0; font-size: 16px; letter-spacing: 4px; font-weight: 900; color: var(--accent); }
+header h1::before { content: "◆ "; opacity: 0.7; }
+header .status { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; }
+header .spacer { flex: 1; }
+header nav.tabs { display: flex; gap: 4px; }
+header nav.tabs button {
+  background: transparent; border: 1px solid var(--line); color: var(--muted);
+  padding: 6px 14px; font-size: 11px; letter-spacing: 2px; font-weight: 700;
+  border-radius: 4px;
+}
+header nav.tabs button.active { color: var(--accent); border-color: var(--accent); background: rgba(255,123,0,0.08); }
+header nav.tabs button:hover:not(.active) { color: var(--text); border-color: var(--text); }
+header .iconbtn {
+  background: transparent; border: 1px solid var(--line); color: var(--text);
+  padding: 6px 10px; font-size: 12px; border-radius: 4px;
+}
+header .iconbtn:hover { border-color: var(--accent); color: var(--accent); }
+header #login-btn.logged-in { border-color: var(--good); color: var(--good); }
+
+main { display: flex; flex: 1; min-height: 0; }
+.view { flex: 1; display: none; flex-direction: column; min-width: 0; }
+.view.active { display: flex; }
+
+/* ============ ARMORY VIEW ============ */
+.filters {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1fr 1fr 1fr auto;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.filters input, .filters select {
+  background: var(--panel2); color: var(--text); border: 1px solid var(--line);
+  padding: 8px 10px; font-size: 13px; border-radius: 4px; font-family: inherit;
+}
+.filters input:focus, .filters select:focus { outline: none; border-color: var(--accent); }
+.filters .count { display: flex; align-items: center; padding: 0 8px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 900px) {
+  .filters { grid-template-columns: 1fr 1fr; }
+  .filters input { grid-column: span 2; }
+  .filters .count { grid-column: span 2; justify-content: flex-end; }
+}
+
+.grid {
+  flex: 1; overflow-y: auto; padding: 10px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px; align-content: start;
+}
+.card {
+  position: relative; background: var(--panel);
+  border: 1px solid var(--line); border-left: 3px solid var(--line);
+  padding: 8px; cursor: pointer; transition: border-color 80ms, background 80ms;
+  user-select: none;
+}
+.card:hover { background: var(--panel2); }
+.card.selected { border-color: var(--accent); background: var(--panel2); }
+.card .icon-wrap { position: relative; width: 64px; height: 64px; float: left; margin-right: 10px; }
+.card .icon-wrap img { width: 64px; height: 64px; display: block; background: #000; }
+.card .icon-wrap .wm { position: absolute; inset: 0; pointer-events: none; background: transparent; }
+.card .name { font-size: 13px; font-weight: 700; line-height: 1.25; max-height: 2.5em; overflow: hidden; }
+.card .meta { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.4px; }
+.card .elem-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-right: 4px; }
+.card[data-tier="6"] { border-left-color: var(--tier-6); }
+.card[data-tier="5"] { border-left-color: var(--tier-5); }
+.card[data-tier="4"] { border-left-color: var(--tier-4); }
+.card[data-tier="3"] { border-left-color: var(--tier-3); }
+.card .equipped-mark { position: absolute; top: 4px; right: 4px; font-size: 10px; color: var(--accent); }
+
+/* MASTERWORK / CRAFTED indicators */
+.card.masterwork .icon-wrap { box-shadow: 0 0 0 2px #f0c14a, 0 0 6px rgba(240, 193, 74, 0.55); }
+.card.crafted .icon-wrap { box-shadow: 0 0 0 2px #cf6b3a; }
+.card .icon-wrap .mw-badge,
+.card .icon-wrap .cf-badge,
+.card .icon-wrap .lk-badge {
+  position: absolute; right: -2px; bottom: -2px;
+  width: 16px; height: 16px; line-height: 14px;
+  font-size: 9px; text-align: center; font-weight: 800;
+  border-radius: 50%; border: 1px solid #000;
+  pointer-events: none;
+}
+.card .icon-wrap .mw-badge { background: #f0c14a; color: #1a1100; }
+.card .icon-wrap .cf-badge { background: #cf6b3a; color: #fff; right: 14px; }
+.card .icon-wrap .lk-badge { background: rgba(0,0,0,0.6); color: #fff; left: -2px; right: auto; font-size: 8px; }
+.slot.masterwork { box-shadow: 0 0 0 2px #f0c14a, 0 0 8px rgba(240, 193, 74, 0.5); border-color: #f0c14a; }
+.slot.crafted { box-shadow: 0 0 0 2px #cf6b3a; border-color: #cf6b3a; }
+.slot .mw-badge, .slot .cf-badge {
+  position: absolute; right: 3px; top: 3px;
+  width: 18px; height: 18px; line-height: 16px;
+  font-size: 11px; text-align: center; font-weight: 800;
+  border-radius: 50%; border: 1px solid #000;
+  pointer-events: none; z-index: 2;
+}
+.slot .mw-badge { background: #f0c14a; color: #1a1100; }
+.slot .cf-badge { background: #cf6b3a; color: #fff; top: 22px; }
+.slot .lk-badge {
+  position: absolute; left: 3px; top: 3px;
+  width: 18px; height: 18px; line-height: 16px;
+  font-size: 9px; text-align: center; font-weight: 800;
+  border-radius: 3px; background: rgba(0,0,0,0.7); color: #fff;
+  border: 1px solid var(--line); pointer-events: none; z-index: 2;
+}
+
+.pager { padding: 8px 14px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: center; gap: 12px; background: var(--panel); }
+.pager button { background: var(--panel2); border: 1px solid var(--line); color: var(--text); padding: 6px 14px; border-radius: 4px; font-size: 12px; }
+.pager button:disabled { opacity: 0.4; cursor: default; }
+.pager .info { font-size: 11px; color: var(--muted); letter-spacing: 0.5px; }
+
+/* ============ GUARDIANS VIEW ============ */
+#login-prompt {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 18px; padding: 40px;
+}
+#login-prompt h2 { font-size: 18px; letter-spacing: 3px; color: var(--accent); margin: 0; }
+#login-prompt p { color: var(--muted); font-size: 13px; line-height: 1.6; max-width: 480px; text-align: center; }
+#login-prompt button {
+  background: var(--accent); color: #000; border: 0; padding: 12px 32px;
+  font-size: 14px; font-weight: 800; letter-spacing: 2px; border-radius: 4px;
+}
+
+#guardians-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+
+/* Mobile-only sub-tabs (hidden on desktop) */
+.g-mtabs { display: none; }
+
+.characters-bar {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.char-card {
+  display: flex; align-items: center; gap: 12px; padding: 8px 10px;
+  background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--line);
+  border-radius: 4px; cursor: pointer;
+}
+.char-card.selected { border-color: var(--accent); }
+.char-card[data-class="0"] { border-left-color: var(--class-titan); }
+.char-card[data-class="1"] { border-left-color: var(--class-hunter); }
+.char-card[data-class="2"] { border-left-color: var(--class-warlock); }
+.char-card .emblem { width: 48px; height: 48px; background: #000; flex-shrink: 0; }
+.char-card .emblem img { width: 100%; height: 100%; display: block; }
+.char-card .label { display: flex; flex-direction: column; min-width: 0; }
+.char-card .label .title { font-size: 13px; font-weight: 800; letter-spacing: 1px; }
+.char-card .label .sub { font-size: 11px; color: var(--muted); }
+
+.loadouts-row { padding: 10px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.02); }
+.loadouts-row h3 { margin: 0 0 8px 0; font-size: 10px; letter-spacing: 2px; color: var(--accent); display: flex; align-items: center; gap: 6px; }
+.loadouts-row .count-pill { background: var(--panel2); padding: 2px 8px; border-radius: 8px; font-size: 10px; color: var(--muted); letter-spacing: 0.5px; }
+.loadouts-row #refresh-profile-btn {
+  margin-left: auto; background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  padding: 4px 10px; font-size: 10px; letter-spacing: 1px; border-radius: 3px; cursor: pointer;
+}
+.loadouts-row #refresh-profile-btn:hover { border-color: var(--accent); color: var(--accent); }
+.loadouts-row #loadouts-toggle {
+  background: transparent; border: 0; color: var(--accent); font-size: 11px;
+  cursor: pointer; padding: 0 2px; transition: transform 120ms;
+}
+.loadouts-row.collapsed #loadouts-toggle { transform: rotate(-90deg); }
+.loadouts-row.collapsed .loadouts-grid { display: none; }
+.loadouts-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px; max-height: 180px; overflow-y: auto; padding-right: 4px;
+}
+.loadout-card {
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 3px;
+  padding: 5px 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;
+  transition: background 80ms, border-color 80ms;
+}
+.loadout-card:hover { background: var(--panel); border-color: var(--accent); }
+.loadout-card.selected { border-color: var(--accent); background: var(--panel); }
+.loadout-card.empty-slot { opacity: 0.55; border-style: dashed; cursor: default; }
+.loadout-card.empty-slot:hover { opacity: 1; border-color: var(--line); background: var(--panel2); }
+.loadout-card .ld-icon {
+  width: 24px; height: 24px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 50%; padding: 2px; flex-shrink: 0;
+  background-position: center; background-size: cover;
+}
+.loadout-card .ld-icon img { width: 100%; height: 100%; display: block; filter: drop-shadow(0 0 1px rgba(0,0,0,0.6)); }
+.loadout-card .ld-name { flex: 1; font-size: 12px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loadout-card .ld-equip {
+  background: var(--accent); color: #000; border: 0; padding: 3px 8px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1px; border-radius: 2px; cursor: pointer; flex-shrink: 0;
+}
+.loadout-card .ld-equip:hover { filter: brightness(1.15); }
+.loadout-card .ld-snap {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  padding: 3px 8px; font-size: 10px; border-radius: 2px; cursor: pointer; letter-spacing: 0.5px; flex-shrink: 0;
+}
+.loadout-card .ld-snap:hover { border-color: var(--accent); color: var(--accent); }
+.loadout-card .ld-clear {
+  background: transparent; color: var(--muted); border: 1px solid var(--line);
+  width: 20px; height: 20px; padding: 0; font-size: 11px; border-radius: 2px; cursor: pointer; line-height: 1; flex-shrink: 0;
+}
+.loadout-card .ld-clear:hover { color: var(--bad); border-color: var(--bad); }
+
+.subclass-plugs { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; margin-top: 6px; }
+.sc-plug { position: relative; aspect-ratio: 1; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; overflow: hidden; cursor: help; }
+.sc-plug img { width: 100%; height: 100%; display: block; }
+.sc-plug .sc-plug-name { display: none; }
+.sc-plug:hover { border-color: var(--accent); }
+
+#loadout-editor-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200;
+  display: none; align-items: center; justify-content: center; padding: 20px;
+}
+#loadout-editor-modal.show { display: flex; }
+#loadout-editor-modal .box {
+  background: var(--panel); border: 1px solid var(--line); padding: 18px;
+  border-radius: 6px; max-width: 560px; width: 100%; max-height: 90vh; overflow-y: auto;
+}
+#loadout-editor-modal h2 { margin: 0 0 12px 0; font-size: 14px; letter-spacing: 2px; color: var(--accent); }
+#loadout-editor-modal label { display: block; font-size: 10px; color: var(--muted); margin: 12px 0 4px; letter-spacing: 1px; font-weight: 700; }
+.le-grid { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+.le-name-grid { display: flex; flex-wrap: wrap; gap: 4px; max-height: 100px; overflow-y: auto; }
+.le-name-grid .le-name {
+  background: var(--bg); border: 1px solid var(--line); color: var(--text);
+  padding: 4px 8px; font-size: 11px; border-radius: 3px; cursor: pointer;
+}
+.le-name-grid .le-name:hover { border-color: var(--accent); }
+.le-name-grid .le-name.selected { background: var(--accent); color: #000; border-color: var(--accent); }
+.le-icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; max-height: 120px; overflow-y: auto; }
+.le-icon-grid .le-icon-cell {
+  aspect-ratio: 1; background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center;
+}
+.le-icon-grid .le-icon-cell:hover { border-color: var(--accent); }
+.le-icon-grid .le-icon-cell.selected { border-color: var(--accent); background: rgba(255,123,0,0.15); }
+.le-icon-grid .le-icon-cell img { width: 100%; height: 100%; filter: drop-shadow(0 0 1px rgba(0,0,0,0.7)); }
+.le-color-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 4px; }
+.le-color-grid .le-color-cell {
+  aspect-ratio: 1; border: 2px solid var(--line); border-radius: 4px;
+  cursor: pointer; background-size: cover; background-position: center;
+}
+.le-color-grid .le-color-cell:hover { border-color: var(--accent); }
+.le-color-grid .le-color-cell.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.le-preview {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 8px;
+}
+.le-preview .ld-icon {
+  width: 36px; height: 36px; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 50%; padding: 3px; background-size: cover; background-position: center; flex-shrink: 0;
+}
+.le-preview .ld-icon img { width: 100%; height: 100%; filter: drop-shadow(0 0 1px rgba(0,0,0,0.7)); }
+.le-preview .le-preview-name { font-size: 13px; font-weight: 700; }
+#loadout-editor-modal .row { display: flex; gap: 8px; margin-top: 14px; }
+#loadout-editor-modal button { padding: 8px 14px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 4px; font-size: 12px; cursor: pointer; }
+#loadout-editor-modal button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+#loadout-editor-modal .hint { font-size: 10px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+
+/* Loadout DETAIL panel */
+.ld-detail-section h3 { color: var(--accent); }
+.ld-item-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.ld-item-row:last-child { border-bottom: 0; }
+.ld-item-row.missing { opacity: 0.5; }
+.ld-item-icon-wrap {
+  position: relative; width: 48px; height: 48px; flex-shrink: 0;
+  background: #000; border: 1px solid var(--line); border-radius: 2px; overflow: hidden;
+}
+.ld-item-icon-wrap img { width: 100%; height: 100%; display: block; }
+.ld-item-icon-wrap.mw { box-shadow: inset 0 0 0 2px #f0c14a; }
+.ld-item-icon-wrap.crafted { box-shadow: inset 0 0 0 2px #cf6b3a; }
+.ld-item-body { flex: 1; min-width: 0; }
+.ld-item-name { font-size: 12px; font-weight: 700; line-height: 1.25; }
+.ld-item-meta { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.3px; }
+.ld-item-stats {
+  font-size: 10px; color: var(--text); margin-top: 4px;
+  font-family: ui-monospace, monospace; opacity: 0.85;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px 8px;
+}
+.ld-item-stats span.k { color: var(--muted); }
+
+.equip-row { padding: 10px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.02); }
+.equip-row h3 { margin: 0 0 8px 0; font-size: 10px; letter-spacing: 2px; color: var(--accent); }
+.equip-sections { display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; }
+.equip-section { display: flex; flex-direction: column; min-width: 0; }
+.equip-section .section-label { font-size: 9px; letter-spacing: 2px; color: var(--muted); margin-bottom: 4px; font-weight: 700; }
+.equip-section .equip-grid { display: grid; gap: 5px; }
+.equip-section:nth-child(1) .equip-grid { grid-template-columns: repeat(3, 80px); }
+.equip-section:nth-child(2) .equip-grid { grid-template-columns: repeat(5, 80px); }
+.slot {
+  position: relative; aspect-ratio: 1; background: var(--panel2); border: 1px solid var(--line); cursor: pointer;
+  overflow: hidden;
+}
+.slot.empty { background: linear-gradient(135deg, var(--panel2) 25%, transparent 25%, transparent 50%, var(--panel2) 50%, var(--panel2) 75%, transparent 75%); background-size: 8px 8px; }
+.slot > img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.slot .wm { position: absolute; inset: 0; pointer-events: none; background: transparent; }
+.slot .caption {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,0.85) 50%);
+  color: var(--text); font-size: 10px; letter-spacing: 0.4px;
+  text-align: center; padding: 12px 2px 3px 2px; pointer-events: none;
+  font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.slot[data-tier="6"] { border-color: var(--tier-6); }
+.slot[data-tier="5"] { border-color: var(--tier-5); }
+.slot.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+@media (max-width: 900px) {
+  .equip-sections { grid-template-columns: 1fr; }
+}
+
+.guardian-grids { display: flex; flex: 1; min-height: 0; }
+.guardian-grids > section { flex: 1; display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); }
+.guardian-grids > section:last-child { border-right: 0; }
+.guardian-grids > section > h3 { margin: 0; padding: 8px 14px; font-size: 10px; letter-spacing: 2px; color: var(--accent); background: var(--panel); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 8px; }
+.guardian-grids .count-pill { background: var(--panel2); padding: 2px 8px; border-radius: 8px; font-size: 10px; color: var(--muted); letter-spacing: 0.5px; }
+.guardian-grids .grid { padding: 8px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.guardian-grids > section > h3 input[type="search"] {
+  margin-left: auto; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--text); padding: 4px 8px; font-size: 11px; border-radius: 3px;
+  font-family: inherit; letter-spacing: normal; width: 180px;
+}
+.guardian-grids > section > h3 input[type="search"]:focus { outline: none; border-color: var(--accent); }
+.grid-groups { flex: 1; overflow-y: auto; padding: 8px; }
+.inv-group { margin-bottom: 16px; }
+.inv-group:last-child { margin-bottom: 0; }
+.inv-group > .group-header {
+  font-size: 11px; letter-spacing: 2px; color: var(--accent);
+  margin-bottom: 6px; font-weight: 800; padding-left: 2px;
+  border-bottom: 1px solid var(--line); padding-bottom: 4px;
+}
+.inv-group > .group-header .count {
+  background: var(--panel2); color: var(--muted); padding: 1px 7px;
+  border-radius: 8px; font-size: 9px; letter-spacing: 0.5px; margin-left: 6px; font-weight: 600;
+}
+.slot-section { margin-bottom: 10px; }
+.slot-section > .slot-section-title {
+  font-size: 9px; letter-spacing: 1.5px; color: var(--muted);
+  margin: 6px 0 3px 0; padding-left: 4px; font-weight: 700;
+}
+.slot-section > .slot-section-title .count { margin-left: 5px; opacity: 0.7; }
+.slot-section > .inner-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 4px;
+}
+.slot-section > .ammo-label {
+  font-size: 9px; letter-spacing: 1.5px; color: var(--accent);
+  margin: 8px 0 2px 4px; padding: 1px 6px; font-weight: 700;
+  background: rgba(255,123,0,0.10); border-left: 2px solid var(--accent);
+  display: inline-block; border-radius: 0 2px 2px 0;
+}
+.slot-section > .type-section { margin: 2px 0 4px 0; }
+.slot-section > .type-section > .type-section-title {
+  font-size: 9px; letter-spacing: 1px; color: var(--text); opacity: 0.85;
+  margin: 4px 0 2px 8px; font-weight: 600;
+}
+.slot-section > .type-section > .type-section-title .count {
+  margin-left: 5px; opacity: 0.6; font-weight: 500;
+}
+.slot-section > .type-section > .inner-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 4px;
+  padding-left: 8px;
+}
+.grid-groups .inv-empty { color: var(--muted); font-size: 11px; padding: 20px; text-align: center; }
+@media (max-width: 900px) {
+  .guardian-grids { flex-direction: column; }
+  .guardian-grids > section { border-right: 0; border-bottom: 1px solid var(--line); max-height: 50vh; }
+}
+
+/* ============ DETAIL ============ */
+aside.detail {
+  width: 400px; border-left: 1px solid var(--line); background: var(--panel);
+  overflow-y: auto; display: none;
+}
+aside.detail.show { display: block; }
+.detail .head { padding: 14px 16px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, rgba(255,255,255,0.04), transparent); }
+.detail .head .icon-row { display: flex; gap: 12px; align-items: center; }
+.detail .head .big-icon { position: relative; width: 72px; height: 72px; flex: 0 0 72px; }
+.detail .head .big-icon img { width: 72px; height: 72px; display: block; background: #000; }
+.detail .head .big-icon .wm { position: absolute; inset: 0; pointer-events: none; background: transparent; }
+.detail .head .meta { min-width: 0; flex: 1; }
+.detail .head h2 { margin: 0 0 4px 0; font-size: 17px; font-weight: 800; line-height: 1.2; word-break: break-word; }
+.detail .head .sub { font-size: 11px; color: var(--muted); letter-spacing: 0.4px; }
+.detail .head .tier { display: inline-block; padding: 1px 8px; border-radius: 2px; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; margin-top: 6px; }
+.detail .close { float: right; background: transparent; border: 0; color: var(--muted); font-size: 22px; line-height: 1; padding: 0 4px; }
+.detail .close:hover { color: var(--text); }
+
+.detail section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.detail section h3 { margin: 0 0 8px 0; font-size: 10px; letter-spacing: 2px; color: var(--accent); font-weight: 800; }
+.detail .desc { font-size: 12px; line-height: 1.6; color: var(--text); opacity: 0.95; white-space: pre-wrap; }
+.detail .flavor { font-size: 12px; line-height: 1.55; color: var(--text); opacity: 0.78; font-style: italic; white-space: pre-wrap; border-left: 2px solid var(--accent); padding-left: 10px; margin: 0; }
+.detail .shot { width: 100%; display: block; border-radius: 4px; }
+.detail .kv { display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px; font-size: 11px; }
+.detail .kv dt { color: var(--muted); }
+.detail .kv dd { margin: 0; }
+
+.actions { display: flex; flex-direction: column; gap: 6px; }
+.actions button {
+  text-align: left; padding: 8px 10px; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--text); border-radius: 4px; font-size: 12px;
+}
+.actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+.actions .feedback { font-size: 11px; color: var(--good); margin-top: 4px; padding: 0 4px; min-height: 16px; }
+.actions .feedback.err { color: var(--bad); }
+
+/* STATS */
+.stats-block { display: flex; flex-direction: column; gap: 4px; }
+.stat-row {
+  display: grid; grid-template-columns: 110px 1fr 36px; gap: 8px; align-items: center;
+  font-size: 11px;
+}
+.stat-row .stat-name { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stat-row .stat-bar { background: var(--bg); height: 7px; border-radius: 3px; overflow: hidden; border: 1px solid var(--line); }
+.stat-row .stat-fill { background: var(--accent); height: 100%; transition: width 200ms; }
+.stat-row .stat-value { text-align: right; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.stat-row.armor .stat-fill { background: var(--arc); }
+
+/* PERKS */
+.perks { display: flex; flex-direction: column; gap: 10px; }
+.perk-col { background: var(--panel2); border: 1px solid var(--line); border-radius: 4px; padding: 8px; }
+.perk-col .col-title { font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-bottom: 6px; text-transform: uppercase; }
+.perk-list { display: flex; flex-direction: column; gap: 2px; }
+.perk-row {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 4px 6px; border-radius: 3px;
+  border-left: 2px solid transparent;
+}
+.perk-row:hover { background: rgba(255,255,255,0.03); }
+.perk-row.equipped {
+  background: rgba(255,123,0,0.10);
+  border-left-color: var(--accent);
+}
+.perk-row.disabled { opacity: 0.4; }
+.perk-row .perk-icon {
+  width: 32px; height: 32px; flex-shrink: 0;
+  background: var(--bg); border: 1px solid var(--line);
+  border-radius: 50%; overflow: hidden;
+}
+.perk-row .perk-icon img { width: 100%; height: 100%; display: block; }
+.perk-row .perk-body { min-width: 0; flex: 1; padding-top: 1px; }
+.perk-row .perk-name { font-size: 12px; font-weight: 700; color: var(--text); line-height: 1.25; }
+.perk-row .perk-desc {
+  font-size: 11px; color: var(--text); line-height: 1.55;
+  margin-top: 3px; white-space: pre-wrap; word-break: break-word;
+  opacity: 0.95;
+}
+
+/* TRANSFER MENU */
+.transfer-pop {
+  position: absolute; background: var(--panel); border: 1px solid var(--accent);
+  border-radius: 4px; padding: 6px; z-index: 50; min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+}
+.transfer-pop button { display: block; width: 100%; text-align: left; padding: 6px 10px; background: transparent; border: 0; color: var(--text); font-size: 12px; border-radius: 2px; }
+.transfer-pop button:hover { background: var(--panel2); color: var(--accent); }
+
+@media (max-width: 900px) {
+  aside.detail { position: fixed; inset: 0; width: 100%; z-index: 50; }
+}
+
+/* ============ MOBILE (<= 700px) — release fixed-height shell, allow page scroll ============ */
+@media (max-width: 700px) {
+  /* Let the viewport/window handle scrolling so position:sticky works correctly.
+     overflow-x: hidden on body would create its own scroll context and break sticky. */
+  html { overflow-x: hidden; }
+  html, body { height: auto; min-height: 100%; }
+  body { overflow: visible; }
+  main { display: block; flex: none; min-height: auto; width: 100%; overflow: visible; }
+  /* Header: compact + sticky on top */
+  header {
+    padding: 6px 10px; gap: 6px;
+    position: sticky; top: 0; z-index: 20;
+    background: var(--bg);
+  }
+  header h1 { font-size: 12px; letter-spacing: 1.5px; }
+  header h1::before { content: "◆"; }
+  header .status { display: none; }
+  header .iconbtn, header nav.tabs button { padding: 5px 8px; font-size: 10px; }
+  /* View container: full width */
+  .view { display: none; width: 100%; max-width: 100%; min-width: 0; flex: none; }
+  .view.active { display: block; }
+  /* ARMORY filters: sticky below header, prevent overflow */
+  #view-armory .filters {
+    position: sticky;
+    top: 44px;
+    z-index: 10;
+    grid-template-columns: 1fr 1fr;
+    background: var(--panel);
+  }
+  #view-armory .filters input,
+  #view-armory .filters select { min-width: 0; width: 100%; }
+  #view-armory .filters .count { padding: 0; }
+  /* CARDS: vertical (icon top, name below) — applies to all cards on mobile */
+  .card { padding: 6px; text-align: center; }
+  .card .icon-wrap {
+    float: none; display: block; margin: 0 auto;
+    width: 56px; height: 56px;
+  }
+  .card .icon-wrap img,
+  .card .icon-wrap .wm { width: 56px; height: 56px; }
+  .card .name {
+    font-size: 11px; margin-top: 4px; line-height: 1.2;
+    max-height: 2.6em; overflow: hidden;
+  }
+  .card .meta {
+    font-size: 9px; justify-content: center;
+    display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+  }
+  .card .equipped-mark { top: 2px; right: 2px; }
+  .card .icon-wrap .mw-badge,
+  .card .icon-wrap .cf-badge { width: 14px; height: 14px; line-height: 12px; font-size: 8px; }
+  /* Smaller min card width on mobile so 2-3 fit */
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 4px;
+  }
+  /* GUARDIANS view: release nested overflow */
+  #guardians-content { overflow: visible; min-height: auto; height: auto; }
+  .characters-bar { grid-template-columns: 1fr; gap: 6px; padding: 8px 10px; }
+  /* EQUIPPED: 8 small slots in 2 sections stacked */
+  .equip-row { padding: 8px 10px; }
+  .equip-sections { flex-direction: column; gap: 10px; }
+  .equip-section:nth-child(1) .equip-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .equip-section:nth-child(2) .equip-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .slot .caption { font-size: 9px; padding: 8px 1px 2px 1px; }
+  /* LOADOUTS: 1 column, expand naturally */
+  .loadouts-row { padding: 8px 10px; }
+  .loadouts-grid {
+    max-height: none; overflow: visible;
+    grid-template-columns: 1fr; gap: 5px;
+  }
+  /* INVENTORY/VAULT: stack vertically with natural height */
+  .guardian-grids { flex-direction: column; min-height: auto; }
+  .guardian-grids > section { max-height: none; border-right: 0; border-bottom: 1px solid var(--line); }
+
+  /* Mobile sub-tabs: sticky just under header */
+  .g-mtabs {
+    display: flex; gap: 4px; padding: 6px 10px; overflow-x: auto;
+    position: sticky; top: 44px; z-index: 9;
+    background: var(--bg); border-bottom: 1px solid var(--line);
+  }
+  .g-mtabs button {
+    flex-shrink: 0; background: var(--panel2); border: 1px solid var(--line);
+    color: var(--muted); padding: 5px 12px; font-size: 11px; letter-spacing: 1px;
+    font-weight: 700; border-radius: 14px; cursor: pointer; font-family: inherit;
+  }
+  .g-mtabs button.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+  /* Section switching — only the active section is shown */
+  #guardians-content[data-msection]:not([data-msection="characters"]) > #char-bar,
+  #guardians-content[data-msection]:not([data-msection="equipped"]) > #equip-row,
+  #guardians-content[data-msection]:not([data-msection="loadouts"]) > #loadouts-row,
+  #guardians-content[data-msection="characters"] > .guardian-grids,
+  #guardians-content[data-msection="equipped"] > .guardian-grids,
+  #guardians-content[data-msection="loadouts"] > .guardian-grids { display: none; }
+  #guardians-content[data-msection="inventory"] > .guardian-grids > #vault-section,
+  #guardians-content[data-msection="vault"] > .guardian-grids > #inv-section { display: none; }
+  .guardian-grids > section > h3 { flex-wrap: wrap; gap: 4px; }
+  .guardian-grids > section > h3 input[type="search"] { width: 100%; margin-left: 0; margin-top: 4px; }
+  .grid-groups { max-height: none; overflow: visible; padding: 6px; }
+  .slot-section > .inner-grid,
+  .slot-section > .type-section > .inner-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 4px;
+  }
+  /* ARMORY (browser): also vertical and scrollable with the page */
+  #view-armory .grid {
+    max-height: none; overflow: visible;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 4px;
+  }
+  /* Pager: compact */
+  .pager { padding: 6px 10px; gap: 8px; }
+  .pager button { padding: 5px 10px; font-size: 11px; }
+}
+
+/* LOADING / MODALS */
+#loading {
+  position: fixed; inset: 0;
+  align-items: center; justify-content: center;
+  background: var(--bg); z-index: 100; flex-direction: column; gap: 14px;
+  display: flex;
+}
+#loading[hidden] { display: none; }
+#login-prompt[hidden], #guardians-content[hidden] { display: none !important; }
+.view[hidden] { display: none !important; }
+#loading .ring { width: 48px; height: 48px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+#loading .msg { font-size: 13px; color: var(--muted); letter-spacing: 1px; }
+#loading .err { color: var(--bad); font-size: 13px; max-width: 460px; line-height: 1.5; padding: 0 20px; text-align: center; white-space: pre-line; }
+@keyframes spin { to { transform: rotate(1turn); } }
+
+#settings-modal, #auth-modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 200;
+  display: none; align-items: center; justify-content: center; padding: 20px;
+}
+#settings-modal.show, #auth-modal.show { display: flex; }
+#auth-modal .box { background: var(--panel); border: 1px solid var(--line); padding: 22px; border-radius: 6px; max-width: 540px; width: 100%; max-height: 90vh; overflow-y: auto; }
+#auth-modal h2 { margin: 0 0 14px 0; font-size: 14px; letter-spacing: 2px; color: var(--accent); }
+#auth-modal label { display: block; font-size: 11px; color: var(--muted); margin: 0 0 4px; letter-spacing: 0.5px; }
+#auth-modal button { padding: 8px 14px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 4px; font-size: 12px; letter-spacing: 1px; cursor: pointer; }
+#auth-modal button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+#auth-modal code { background: var(--panel2); padding: 1px 4px; border-radius: 2px; }
+#auth-modal .row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+#auth-modal .hint { font-size: 10px; color: var(--muted); line-height: 1.6; margin-top: 14px; }
+#settings-modal .box { background: var(--panel); border: 1px solid var(--line); padding: 22px; border-radius: 6px; max-width: 480px; width: 100%; max-height: 90vh; overflow-y: auto; }
+#settings-modal h2 { margin: 0 0 14px 0; font-size: 14px; letter-spacing: 2px; color: var(--accent); }
+#settings-modal label { display: block; font-size: 11px; color: var(--muted); margin: 10px 0 4px; letter-spacing: 0.5px; }
+#settings-modal input { width: 100%; background: var(--panel2); border: 1px solid var(--line); color: var(--text); padding: 8px; font-family: monospace; font-size: 11px; border-radius: 4px; }
+#settings-modal .row { display: flex; gap: 8px; margin-top: 16px; flex-wrap: wrap; }
+#settings-modal button { padding: 8px 14px; background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 4px; font-size: 12px; letter-spacing: 1px; }
+#settings-modal button.primary { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+#settings-modal .hint { font-size: 10px; color: var(--muted); line-height: 1.6; margin-top: 14px; }
+#settings-modal .hint a { color: var(--arc); }
+
+#toast {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  background: var(--panel); border: 1px solid var(--accent); padding: 10px 18px;
+  border-radius: 4px; color: var(--text); font-size: 13px; z-index: 300;
+  opacity: 0; transition: opacity 200ms; pointer-events: none;
+}
+#toast.show { opacity: 1; }
+#toast.err { border-color: var(--bad); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>D2 ARMORY</h1>
+  <nav class="tabs">
+    <button data-tab="armory" class="active">ARMORY</button>
+    <button data-tab="guardians">MY GUARDIANS</button>
+  </nav>
+  <div class="status" id="status">—</div>
+  <div class="spacer"></div>
+  <button id="login-btn" class="iconbtn">LOGIN</button>
+  <button id="refresh-btn" class="iconbtn" title="マニフェスト再ダウンロード">↻</button>
+  <button id="settings-btn" class="iconbtn">⚙</button>
+</header>
+
+<main>
+  <!-- ARMORY -->
+  <section id="view-armory" class="view active">
+    <div class="filters">
+      <input type="search" id="q" placeholder="名前で検索...">
+      <select id="f-cat"><option value="">すべての種類</option></select>
+      <select id="f-elem">
+        <option value="">属性すべて</option>
+        <option value="1">キネティック</option>
+        <option value="2">アーク</option>
+        <option value="3">ソーラー</option>
+        <option value="4">ボイド</option>
+        <option value="6">ステイシス</option>
+        <option value="7">ストランド</option>
+      </select>
+      <select id="f-tier">
+        <option value="">レアリティすべて</option>
+        <option value="6">エキゾチック</option>
+        <option value="5">レジェンダリー</option>
+        <option value="4">レア</option>
+        <option value="3">アンコモン</option>
+        <option value="2">コモン</option>
+      </select>
+      <select id="f-class">
+        <option value="">クラスすべて</option>
+        <option value="0">タイタン</option>
+        <option value="1">ハンター</option>
+        <option value="2">ウォーロック</option>
+        <option value="3">クラス共通</option>
+      </select>
+      <div class="count" id="count">—</div>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="pager">
+      <button id="prev">‹ PREV</button>
+      <div class="info" id="page-info">—</div>
+      <button id="next">NEXT ›</button>
+    </div>
+  </section>
+
+  <!-- GUARDIANS -->
+  <section id="view-guardians" class="view">
+    <div id="login-prompt">
+      <h2>ログインしてキャラクター情報を取得</h2>
+      <p>右上 LOGIN を押すと別タブで Bungie 認証ページが開きます。<br>
+      認証後リダイレクトされた URL を全コピーしてアプリに貼り付けるとログイン完了。<br>
+      <small style="opacity:0.7">OAuth Client ID: <code id="login-cid">—</code> / Redirect URL: <code id="login-redir">—</code></small></p>
+      <button id="big-login">LOGIN WITH BUNGIE</button>
+    </div>
+    <div id="guardians-content" hidden data-msection="equipped">
+      <nav class="g-mtabs" id="g-mtabs">
+        <button data-msection="characters">キャラ</button>
+        <button data-msection="equipped" class="active">装備</button>
+        <button data-msection="loadouts">ロードアウト</button>
+        <button data-msection="inventory">INVENTORY</button>
+        <button data-msection="vault">VAULT</button>
+      </nav>
+      <div class="characters-bar" id="char-bar"></div>
+      <div class="equip-row" id="equip-row">
+        <h3>EQUIPPED</h3>
+        <div class="equip-sections" id="equip-sections"></div>
+      </div>
+      <div class="loadouts-row" id="loadouts-row">
+        <h3>
+          <button id="loadouts-toggle" title="折りたたみ/展開">▼</button>
+          LOADOUTS <span class="count-pill" id="loadouts-count">0</span>
+          <button id="refresh-profile-btn" title="プロファイル再取得">↻ プロファイル更新</button>
+        </h3>
+        <div class="loadouts-grid" id="loadouts-grid"></div>
+      </div>
+      <div class="guardian-grids">
+        <section id="inv-section">
+          <h3>INVENTORY <span class="count-pill" id="inv-count">0</span></h3>
+          <div class="grid-groups" id="inv-groups"></div>
+        </section>
+        <section id="vault-section">
+          <h3>
+            VAULT <span class="count-pill" id="vault-count">0</span>
+            <input id="vault-q" type="search" placeholder="VAULT内検索...">
+          </h3>
+          <div class="grid-groups" id="vault-groups"></div>
+        </section>
+      </div>
+    </div>
+  </section>
+
+  <aside class="detail" id="detail"></aside>
+</main>
+
+<div id="loading">
+  <div class="ring"></div>
+  <div class="msg" id="loading-msg">初期化中...</div>
+  <div class="err" id="loading-err" hidden></div>
+</div>
+
+<div id="loadout-editor-modal">
+  <div class="box">
+    <h2>ロードアウト編集</h2>
+    <label>名前</label>
+    <div id="le-name-grid" class="le-grid le-name-grid"></div>
+    <label>アイコン</label>
+    <div id="le-icon-grid" class="le-grid le-icon-grid"></div>
+    <label>色</label>
+    <div id="le-color-grid" class="le-grid le-color-grid"></div>
+    <label>プレビュー</label>
+    <div id="le-preview" class="le-preview"></div>
+    <div class="row">
+      <button class="primary" id="le-save">保存</button>
+      <button id="le-cancel" style="margin-left:auto;">キャンセル</button>
+    </div>
+    <div class="hint">名前は Bungie が用意した約20種の中から選択。任意文字列はAPI側で不可。</div>
+  </div>
+</div>
+
+<div id="auth-modal">
+  <div class="box">
+    <h2>BUNGIE ログイン</h2>
+    <p style="font-size:12px;color:var(--muted);line-height:1.7;margin:0 0 14px 0">
+      <b style="color:var(--text)">1.</b> 下のボタンで Bungie 認証ページを別ウィンドウで開く<br>
+      <b style="color:var(--text)">2.</b> 認証後 <code>https://127.0.0.1/index.html?code=...</code> に飛んで「接続できません」が出ます(これで OK)<br>
+      <b style="color:var(--text)">3.</b> その<b style="color:var(--text)">アドレスバーの URL をコピー</b> (<code>Cmd+L</code> → <code>Cmd+C</code>)<br>
+      <b style="color:var(--text)">4.</b> このタブに戻ると <b style="color:var(--accent)">自動で取り込み</b>(クリップボード権限が無ければ下の 📋 ボタン)
+    </p>
+    <div class="row" style="margin-top:0;margin-bottom:14px">
+      <button class="primary" id="auth-open">▶ Bungie 認証ページを開く</button>
+      <button id="auth-clipboard" style="margin-left:auto;">📋 クリップボードから取り込み</button>
+    </div>
+    <div id="auth-progress" style="display:none;padding:10px 12px;background:var(--panel2);border:1px solid var(--accent);border-radius:4px;font-size:12px;margin-bottom:10px;color:var(--accent)"></div>
+    <label for="auth-paste">手動で貼り付け(自動取り込みが効かなかったとき用)</label>
+    <textarea id="auth-paste" autocomplete="off" spellcheck="false" placeholder="https://127.0.0.1/index.html?code=xxxxxxxx&state=yyyyyy" style="width:100%;height:64px;background:var(--panel2);border:1px solid var(--line);color:var(--text);padding:8px;font-family:monospace;font-size:11px;border-radius:4px;resize:vertical"></textarea>
+    <div class="row">
+      <button class="primary" id="auth-submit">トークン取得</button>
+      <button id="auth-cancel" style="margin-left:auto;">キャンセル</button>
+    </div>
+    <div class="hint">
+      コードは10分で期限切れ、一度使うと再利用不可。クリップボード読み込みは初回ブラウザ許可ダイアログが出ます。
+    </div>
+  </div>
+</div>
+
+<div id="settings-modal">
+  <div class="box">
+    <h2>SETTINGS</h2>
+    <div class="row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:0">
+      <button id="settings-clear-cache">DB初期化 (マニフェスト再ダウンロード)</button>
+      <button id="settings-logout">ログアウト</button>
+    </div>
+    <div class="row">
+      <button id="settings-cancel" style="margin-left:auto;">閉じる</button>
+    </div>
+    <div class="hint">
+      認証情報(API Key / OAuth Client) はコード内に埋め込み済み。
+      変更が必要な場合は <code>index.html</code> 内の <code>DEFAULT</code> 定数または <code>localStorage</code>(キー: <code>d2_API_KEY</code>, <code>d2_CLIENT_ID</code> 等)で上書き可能。
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ========= CONFIG / CONSTANTS ========= */
+const DEFAULT = {
+  API_KEY: '175c13fb6427478d80c153c6c52ccb9d',
+  CLIENT_ID: '39538',
+  CLIENT_SECRET: 'GY6zDvxz4ZvfEfCNU3ryi5i8T1svPqlz.949iyeLfTA',
+  REDIRECT: 'http://127.0.0.1/index.html',
+};
+const BUNGIE = 'https://www.bungie.net';
+const DB_NAME = 'd2armory';
+const STORE = 'cache';
+const PAGE_SIZE = 60;
+const LANG = 'ja';
+const SCHEMA_VERSION = 5; // bump when trimItem output changes — forces cache rebuild
+// Modern (2026) D2 armor stats: 体力 / 武器 / クラス
+const ARMOR_STAT_HASHES = [
+  392767087,  // 体力 (Health)
+  2996146975, // 武器 (Weapons)
+  1943323491, // クラス (Class)
+];
+// Weapon stat priority order: 威力, 射程距離, 安定性, ハンドリング, リロード速度, マガジン, 反動方向,
+// 毎分発射数, 弾薬生成, ズーム, 照準補佐, ガード耐性, ガード効率, チャージ時間
+const WEAPON_STAT_PRIORITY = [
+  4043523819, 1240592695, 155624089, 943549884, 4188031367, 3871231066, 2715839340,
+  4284893193, 1931675084, 3555269338, 1345609583, 2714457168, 2961396640, 3022301683,
+  209426660, 2762071195, 1591432999, 2523465841, 3614673599,
+];
+
+const ELEMENTS = {
+  1: { name: 'キネティック', color: 'var(--kinetic)' },
+  2: { name: 'アーク',       color: 'var(--arc)' },
+  3: { name: 'ソーラー',     color: 'var(--solar)' },
+  4: { name: 'ボイド',       color: 'var(--void)' },
+  6: { name: 'ステイシス',   color: 'var(--stasis)' },
+  7: { name: 'ストランド',   color: 'var(--strand)' },
+};
+const CLASSES = { 0: 'タイタン', 1: 'ハンター', 2: 'ウォーロック', 3: 'クラス共通' };
+const RACES = { 0: 'ヒューマン', 1: 'オウサム', 2: 'エクソ' };
+const GENDERS = { 0: 'メイル', 1: 'フィーメイル' };
+const ITEM_TYPES = { 2: 'アーマー', 3: 'ウェポン', 16: 'サブクラス', 19: 'モッド' };
+
+// Bucket hashes for equipment slots (kept for layout ordering)
+const EQUIP_SLOTS = [
+  { h: 1498876634, name: 'キネティック', group: 'weapon' },
+  { h: 2465295065, name: 'エネルギー',   group: 'weapon' },
+  { h: 953998645,  name: 'パワー',       group: 'weapon' },
+  { h: 3448274439, name: '頭',           group: 'armor' },
+  { h: 3551918588, name: '腕',           group: 'armor' },
+  { h: 14239492,   name: '胴体',         group: 'armor' },
+  { h: 20886954,   name: '足',           group: 'armor' },
+  { h: 1585787867, name: 'クラス装備',   group: 'armor' },
+];
+const SUBCLASS_BUCKET = 3284755031;
+const VAULT_BUCKET = 138197802;
+
+const TFV = { transient: 0, vault: 1 };
+
+// DestinyItemState bit flags
+const ITEM_STATE = { LOCKED: 1, TRACKED: 2, MASTERWORK: 4, CRAFTED: 8 };
+
+/* ========= STATE ========= */
+const State = {
+  view: 'armory',
+  oauth: null,           // { access, accessExp, refresh, refreshExp, membershipId }
+  destinyMembership: null, // { membershipType, membershipId, displayName }
+  items: [],             // weapons + armor (trimmed, array)
+  plugs: new Map(),      // plug hash -> { n, d, i, t }
+  plugSets: new Map(),   // plugSet hash -> array of plug item hashes
+  statDefs: new Map(),   // statHash -> { n, d, idx }
+  loadoutNames: new Map(), // nameHash -> name
+  loadoutIcons: new Map(), // iconHash -> iconImagePath
+  loadoutColors: new Map(),// colorHash -> colorImagePath
+  byHash: new Map(),     // hash -> any item (items + plugs combined)
+  version: '',
+  // armory
+  filtered: [], armoryPage: 0,
+  // guardians
+  profile: null,         // bungie profile response
+  charId: null,
+  selected: null,        // { kind: 'db'|'live', data: item, instanceId?, characterId? }
+};
+
+/* ========= HELPERS ========= */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+function escape(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+function setStatus(msg) { $('#status').textContent = msg; }
+function setLoading(msg, err) {
+  const el = $('#loading');
+  if (msg === null) { el.hidden = true; return; }
+  el.hidden = false;
+  $('#loading-msg').textContent = msg;
+  const e = $('#loading-err');
+  if (err) { e.hidden = false; e.textContent = err; } else { e.hidden = true; }
+}
+function toast(msg, isErr) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = isErr ? 'show err' : 'show';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function tierColor(tt) { return `var(--tier-${tt})`; }
+function cfg(k) { return localStorage.getItem('d2_' + k) || DEFAULT[k]; }
+function apiKey()       { return cfg('API_KEY'); }
+function clientId()     { return cfg('CLIENT_ID'); }
+function clientSecret() { return cfg('CLIENT_SECRET'); }
+function redirect()     { return cfg('REDIRECT'); }
+
+/* ========= INDEXED DB ========= */
+function dbOpen() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'key' });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function dbGet(key) {
+  const db = await dbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readonly');
+    const req = tx.objectStore(STORE).get(key);
+    req.onsuccess = () => resolve(req.result?.value);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function dbPut(key, value) {
+  const db = await dbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put({ key, value });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function dbClear() {
+  try { const db = await dbOpen(); db.close(); } catch {}
+  await new Promise((r) => {
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = r; req.onerror = r; req.onblocked = r;
+  });
+}
+
+/* ========= BUNGIE API (low level) ========= */
+async function api(path, opts = {}) {
+  const headers = { 'X-API-Key': apiKey(), ...(opts.headers || {}) };
+  if (opts.auth) {
+    const t = await getAccessToken();
+    if (!t) throw new Error('NOT_LOGGED_IN');
+    headers['Authorization'] = `Bearer ${t}`;
+  }
+  const res = await fetch(BUNGIE + path, { ...opts, headers });
+  let data = null;
+  try { data = await res.json(); } catch {}
+  if (data && data.ErrorCode === 2107) {
+    throw new Error(
+      `OriginHeaderDoesNotMatchKey\n今のページOrigin = ${location.origin}\n` +
+      `Bungie Application で「Origin Header」欄に "${location.origin}" または "*" を設定してください。`
+    );
+  }
+  if (!res.ok || (data && data.ErrorCode !== 1)) {
+    const msg = data?.Message || `HTTP ${res.status}`;
+    const err = new Error(`API ${path}: ${msg}`);
+    err.bungie = data;
+    throw err;
+  }
+  return data.Response;
+}
+
+/* ========= OAUTH ========= */
+function loadOauth() {
+  try { State.oauth = JSON.parse(localStorage.getItem('d2_oauth')); } catch { State.oauth = null; }
+}
+function saveOauth() {
+  if (State.oauth) localStorage.setItem('d2_oauth', JSON.stringify(State.oauth));
+  else localStorage.removeItem('d2_oauth');
+}
+function isLoggedIn() {
+  return !!(State.oauth && State.oauth.refresh && Date.now() < State.oauth.refreshExp);
+}
+function logout() {
+  State.oauth = null; saveOauth();
+  $('#login-btn').textContent = 'LOGIN';
+  $('#login-btn').classList.remove('logged-in');
+  if (State.view === 'guardians') renderGuardians();
+}
+
+// Paste-URL OAuth flow — no local server required.
+// User opens Bungie auth in new tab; the redirect to https://127.0.0.1/... fails
+// to load any server, but the URL with code is visible in the address bar.
+// User copies that URL and pastes it back here.
+let pendingAuthState = null;
+
+function startAuth() {
+  if (!clientId()) { toast('Client ID 未設定 (SETTINGS)', true); return; }
+  pendingAuthState = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  sessionStorage.setItem('d2_state', pendingAuthState);
+  _authSubmitted = false;
+  $('#auth-paste').value = '';
+  authProgress(null);
+  $('#auth-modal').classList.add('show');
+}
+
+let _authPopup = null;
+let _authVisHandler = null;
+let _authCloseChecker = null;
+let _authSubmitted = false;
+
+function authProgress(msg) {
+  const el = $('#auth-progress');
+  if (!msg) { el.style.display = 'none'; el.textContent = ''; return; }
+  el.style.display = 'block';
+  el.textContent = msg;
+}
+
+function authCleanup() {
+  if (_authVisHandler) { document.removeEventListener('visibilitychange', _authVisHandler); _authVisHandler = null; }
+  if (_authCloseChecker) { clearInterval(_authCloseChecker); _authCloseChecker = null; }
+  _authPopup = null;
+}
+
+async function tryAutoClipboard(opts = {}) {
+  if (_authSubmitted) return false;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) return false;
+    const { code } = parseAuthPayload(text);
+    if (!code) {
+      if (opts.notify) toast('クリップボードに code 入り URL がありません', true);
+      return false;
+    }
+    _authSubmitted = true;
+    $('#auth-paste').value = text;
+    authProgress('URL 検出 → トークン交換中…');
+    try { if (_authPopup && !_authPopup.closed) _authPopup.close(); } catch {}
+    authCleanup();
+    await authSubmit();
+    return true;
+  } catch (e) {
+    // Permission denied or no user gesture
+    if (opts.notify) toast('クリップボード読み込み拒否 — 手動で貼り付けてください', true);
+    return false;
+  }
+}
+
+function authOpenBungie() {
+  const url = `${BUNGIE}/${LANG}/OAuth/Authorize?client_id=${encodeURIComponent(clientId())}&response_type=code&state=${pendingAuthState || sessionStorage.getItem('d2_state') || ''}`;
+  _authSubmitted = false;
+  authCleanup();
+  // Open in real popup window (not just tab) so it's small/floating
+  const w = 640, h = 760;
+  const left = Math.max(0, (screen.width - w) / 2);
+  const top  = Math.max(0, (screen.height - h) / 2);
+  _authPopup = window.open(url, 'd2_bungie_oauth', `width=${w},height=${h},left=${left},top=${top}`);
+  if (!_authPopup) {
+    // Popup blocked → fall back to new tab
+    window.open(url, '_blank');
+    authProgress('別タブで開きました。認証後 URL をコピー → 戻ってきてください。');
+    _authPopup = null;
+  } else {
+    authProgress('別ウィンドウで認証中… 認証後 URL をコピー (Cmd+L → Cmd+C) → このタブに戻ってください。');
+  }
+  // When the user returns to our tab, attempt auto-read.
+  _authVisHandler = () => {
+    if (document.hidden) return;
+    // Brief delay so any focus settling completes
+    setTimeout(() => tryAutoClipboard(), 80);
+  };
+  document.addEventListener('visibilitychange', _authVisHandler);
+  // Also poll popup.closed (some browsers don't fire visibilitychange reliably)
+  if (_authPopup) {
+    _authCloseChecker = setInterval(() => {
+      if (_authPopup && _authPopup.closed) {
+        clearInterval(_authCloseChecker); _authCloseChecker = null;
+        if (_authSubmitted) return;
+        // Popup closed: prompt for manual or clipboard
+        authProgress('ポップアップが閉じられました。📋 ボタンか手動貼り付けでお願いします。');
+      }
+    }, 500);
+  }
+}
+
+function parseAuthPayload(input) {
+  const trimmed = input.trim();
+  if (!trimmed) return {};
+  let code = null, state = null, error = null;
+  try {
+    const u = new URL(trimmed);
+    code = u.searchParams.get('code');
+    state = u.searchParams.get('state');
+    error = u.searchParams.get('error');
+  } catch {}
+  if (!code) {
+    const q = trimmed.replace(/^[?#]/, '').replace(/^.*\?/, '');
+    const p = new URLSearchParams(q);
+    code = p.get('code'); state = p.get('state'); error = p.get('error');
+  }
+  return { code, state, error };
+}
+
+async function authSubmit() {
+  const { code, state, error } = parseAuthPayload($('#auth-paste').value);
+  if (error) { authProgress(null); toast('OAuth error: ' + error, true); return; }
+  if (!code) { authProgress(null); toast('URL から code が見つかりません', true); return; }
+  const saved = sessionStorage.getItem('d2_state');
+  if (state && saved && state !== saved) {
+    if (!confirm('state が一致しません(別セッション?)強制的に続行しますか?')) { authProgress(null); return; }
+  }
+  sessionStorage.removeItem('d2_state');
+  pendingAuthState = null;
+  authCleanup();
+  $('#auth-modal').classList.remove('show');
+  authProgress(null);
+  setLoading('トークン取得中...');
+  try {
+    await exchangeCodeForToken(code);
+    setLoading(null);
+    $('#login-btn').textContent = '★ LOGOUT';
+    $('#login-btn').classList.add('logged-in');
+    toast('ログイン完了');
+    if (State.view === 'guardians') renderGuardians();
+  } catch (e) {
+    setLoading(null);
+    toast('Token交換失敗: ' + e.message, true);
+  }
+}
+
+function bindAuthModal() {
+  $('#auth-open').addEventListener('click', authOpenBungie);
+  $('#auth-clipboard').addEventListener('click', () => tryAutoClipboard({ notify: true }));
+  $('#auth-submit').addEventListener('click', authSubmit);
+  $('#auth-cancel').addEventListener('click', () => {
+    $('#auth-modal').classList.remove('show');
+    authCleanup(); authProgress(null);
+    pendingAuthState = null;
+  });
+  $('#auth-modal').addEventListener('click', e => {
+    if (e.target.id === 'auth-modal') {
+      $('#auth-modal').classList.remove('show');
+      authCleanup(); authProgress(null);
+    }
+  });
+  $('#auth-paste').addEventListener('paste', () => {
+    setTimeout(() => {
+      const { code } = parseAuthPayload($('#auth-paste').value);
+      if (code) authSubmit();
+    }, 30);
+  });
+  $('#auth-paste').addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); authSubmit(); }
+  });
+}
+
+async function exchangeCodeForToken(code) {
+  return tokenRequest({ grant_type: 'authorization_code', code });
+}
+async function refreshTokens() {
+  if (!State.oauth?.refresh) throw new Error('No refresh token');
+  return tokenRequest({ grant_type: 'refresh_token', refresh_token: State.oauth.refresh });
+}
+async function tokenRequest(body) {
+  const cid = clientId(); const cs = clientSecret();
+  const headers = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'X-API-Key': apiKey(),
+  };
+  let form;
+  if (cs) {
+    headers['Authorization'] = 'Basic ' + btoa(`${cid}:${cs}`);
+    form = new URLSearchParams(body).toString();
+  } else {
+    form = new URLSearchParams({ ...body, client_id: cid }).toString();
+  }
+  const res = await fetch(`${BUNGIE}/Platform/App/OAuth/Token/`, { method: 'POST', headers, body: form });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.access_token) {
+    throw new Error(data?.error_description || data?.Message || `Token HTTP ${res.status}`);
+  }
+  const now = Date.now();
+  State.oauth = {
+    access: data.access_token,
+    accessExp: now + (data.expires_in * 1000) - 60_000,
+    refresh: data.refresh_token,
+    refreshExp: now + (data.refresh_expires_in * 1000) - 60_000,
+    membershipId: data.membership_id,
+  };
+  saveOauth();
+  return State.oauth;
+}
+async function getAccessToken() {
+  if (!State.oauth) return null;
+  if (Date.now() < State.oauth.accessExp) return State.oauth.access;
+  if (Date.now() < State.oauth.refreshExp) {
+    try { await refreshTokens(); return State.oauth.access; }
+    catch (e) { console.error('Refresh failed', e); logout(); return null; }
+  }
+  logout();
+  return null;
+}
+
+/* ========= MANIFEST ========= */
+async function fetchManifestMeta() {
+  return api('/Platform/Destiny2/Manifest/');
+}
+
+function trimItem(it) {
+  if (it.redacted || it.blacklisted) return null;
+  const dp = it.displayProperties;
+  if (!dp || !dp.name) return null;
+  const isPlug = it.itemType === 19;
+  const isMain = it.itemType === 2 || it.itemType === 3 || it.itemType === 16;
+  if (!isPlug && !isMain) return null;
+  if (!dp.icon) return null;
+  const t = { h: it.hash, n: dp.name, i: dp.icon, it: it.itemType };
+  if (dp.description) t.d = dp.description;
+  if (it.iconWatermark || it.iconWatermarkFeatured) t.w = it.iconWatermark || it.iconWatermarkFeatured;
+  if (it.itemTypeDisplayName) t.t = it.itemTypeDisplayName;
+  if (it.itemSubType) t.is = it.itemSubType;
+  if (it.classType != null) t.cl = it.classType;
+  if (it.defaultDamageType) t.dt = it.defaultDamageType;
+  if (it.inventory?.tierType) t.tt = it.inventory.tierType;
+  if (it.inventory?.tierTypeName) t.ttn = it.inventory.tierTypeName;
+  if (it.flavorText) t.fx = it.flavorText;
+  if (it.screenshot) t.s = it.screenshot;
+  if (it.inventory?.bucketTypeHash) t.bk = it.inventory.bucketTypeHash;
+  if (it.equippingBlock?.equipmentSlotTypeHash) t.eq = it.equippingBlock.equipmentSlotTypeHash;
+  if (it.equippingBlock?.ammoType) t.am = it.equippingBlock.ammoType; // 1=Primary 2=Special 3=Heavy
+  if (it.stats?.stats) {
+    const s = {};
+    for (const k in it.stats.stats) {
+      const v = it.stats.stats[k].value;
+      if (v != null && v !== 0) s[k] = v;
+    }
+    if (Object.keys(s).length) t.st = s;
+  }
+  if (isMain && it.sockets?.socketEntries) {
+    t.sk = it.sockets.socketEntries.map(se => {
+      const o = {};
+      if (se.singleInitialItemHash) o.s = se.singleInitialItemHash;
+      if (se.reusablePlugItems?.length) o.r = se.reusablePlugItems.map(p => p.plugItemHash);
+      if (se.randomizedPlugSetHash) o.rp = se.randomizedPlugSetHash;
+      if (se.socketTypeHash) o.st = se.socketTypeHash;
+      return o;
+    });
+    if (it.sockets.socketCategories) {
+      t.sc = it.sockets.socketCategories.map(c => ({ h: c.socketCategoryHash, i: c.socketIndexes }));
+    }
+  }
+  return t;
+}
+function trimPlugSet(ps) {
+  const r = ps.reusablePlugItems;
+  if (!r?.length) return null;
+  return r.map(p => p.plugItemHash);
+}
+
+async function downloadJson(path, onProgress) {
+  const res = await fetch(BUNGIE + path);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.body) return res.json();
+  const total = +res.headers.get('content-length') || 0;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let recv = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    recv += value.length;
+    if (total && onProgress) onProgress(recv / total);
+  }
+  return JSON.parse(await new Blob(chunks).text());
+}
+
+async function loadManifest() {
+  // Force rebuild if schema changed
+  const cachedSchema = await dbGet('schema').catch(() => null);
+  if (cachedSchema !== SCHEMA_VERSION) {
+    setLoading('スキーマ更新 — キャッシュ初期化中…');
+    await dbClear();
+  }
+  const cachedVer = await dbGet('version').catch(() => null);
+  const cachedItems = await dbGet('items').catch(() => null);
+  const cachedPlugs = await dbGet('plugs').catch(() => null);
+  const cachedPlugSets = await dbGet('plugSets').catch(() => null);
+  const cachedStatDefs = await dbGet('statDefs').catch(() => null);
+  const cachedLoadoutDefs = await dbGet('loadoutDefs').catch(() => null);
+
+  let meta = null, metaErr = null;
+  try { setLoading('マニフェスト情報を取得中...'); meta = await fetchManifestMeta(); }
+  catch (e) { metaErr = e; console.warn('Manifest meta failed:', e); }
+
+  if (meta) {
+    const ver = meta.version;
+    const itemPath = meta.jsonWorldComponentContentPaths[LANG].DestinyInventoryItemDefinition;
+    const plugSetPath = meta.jsonWorldComponentContentPaths[LANG].DestinyPlugSetDefinition;
+    if (cachedVer === ver && cachedItems && cachedPlugs && cachedPlugSets && cachedStatDefs && cachedLoadoutDefs) {
+      installManifest(ver, cachedItems, cachedPlugs, cachedPlugSets, cachedStatDefs, cachedLoadoutDefs);
+    } else {
+      const cp = meta.jsonWorldComponentContentPaths[LANG];
+      setLoading('アイテム定義をダウンロード中... (圧縮済 約8MB)');
+      const raw = await downloadJson(cp.DestinyInventoryItemDefinition, p => setLoading(`アイテム定義 ${Math.round(p*100)}%`));
+      setLoading('PlugSet をダウンロード中... (約2MB)');
+      const rawPS = await downloadJson(cp.DestinyPlugSetDefinition, p => setLoading(`PlugSet ${Math.round(p*100)}%`));
+      setLoading('Stat 定義ダウンロード中...');
+      const rawStats = await downloadJson(cp.DestinyStatDefinition);
+      setLoading('ロードアウト定義ダウンロード中...');
+      const [rawLdName, rawLdIcon, rawLdColor] = await Promise.all([
+        downloadJson(cp.DestinyLoadoutNameDefinition),
+        downloadJson(cp.DestinyLoadoutIconDefinition),
+        downloadJson(cp.DestinyLoadoutColorDefinition),
+      ]);
+      setLoading('整形中...');
+      const items = []; const plugs = {};
+      for (const k in raw) {
+        const t = trimItem(raw[k]);
+        if (!t) continue;
+        if (t.it === 19) plugs[t.h] = t; else items.push(t);
+      }
+      const plugSets = {};
+      for (const k in rawPS) {
+        const t = trimPlugSet(rawPS[k]);
+        if (t) plugSets[k] = t;
+      }
+      const statDefs = {};
+      for (const k in rawStats) {
+        const s = rawStats[k];
+        if (s.redacted || !s.displayProperties?.name) continue;
+        statDefs[k] = { n: s.displayProperties.name, d: s.displayProperties.description || '', idx: s.index || 0 };
+      }
+      const loadoutDefs = {
+        names: {}, icons: {}, colors: {},
+      };
+      for (const k in rawLdName) {
+        const n = rawLdName[k]?.name; if (n) loadoutDefs.names[k] = n;
+      }
+      for (const k in rawLdIcon) {
+        const p = rawLdIcon[k]?.iconImagePath; if (p) loadoutDefs.icons[k] = p;
+      }
+      for (const k in rawLdColor) {
+        const p = rawLdColor[k]?.colorImagePath; if (p) loadoutDefs.colors[k] = p;
+      }
+      setLoading('保存中...');
+      await dbPut('schema', SCHEMA_VERSION);
+      await dbPut('version', ver);
+      await dbPut('items', items);
+      await dbPut('plugs', plugs);
+      await dbPut('plugSets', plugSets);
+      await dbPut('statDefs', statDefs);
+      await dbPut('loadoutDefs', loadoutDefs);
+      installManifest(ver, items, plugs, plugSets, statDefs, loadoutDefs);
+    }
+  } else if (cachedItems && cachedPlugs && cachedPlugSets && cachedStatDefs && cachedLoadoutDefs) {
+    installManifest(cachedVer || '?', cachedItems, cachedPlugs, cachedPlugSets, cachedStatDefs, cachedLoadoutDefs);
+    console.warn('Using cached manifest');
+  } else {
+    throw metaErr || new Error('No cache and meta unavailable');
+  }
+}
+function installManifest(ver, items, plugs, plugSets, statDefs, loadoutDefs) {
+  State.version = ver;
+  State.items = items;
+  State.plugs = new Map(Object.entries(plugs).map(([k, v]) => [+k, v]));
+  State.plugSets = new Map(Object.entries(plugSets).map(([k, v]) => [+k, v]));
+  State.statDefs = new Map(Object.entries(statDefs || {}).map(([k, v]) => [+k, v]));
+  State.loadoutNames = new Map(Object.entries(loadoutDefs?.names || {}).map(([k, v]) => [+k, v]));
+  State.loadoutIcons = new Map(Object.entries(loadoutDefs?.icons || {}).map(([k, v]) => [+k, v]));
+  State.loadoutColors = new Map(Object.entries(loadoutDefs?.colors || {}).map(([k, v]) => [+k, v]));
+  State.byHash = new Map();
+  for (const it of items) State.byHash.set(it.h, it);
+  for (const [k, v] of State.plugs) State.byHash.set(k, v);
+}
+
+/* ========= PERKS ========= */
+// Weapon perk socket category hash (modern D2)
+const PERK_SOCKET_CATEGORIES = new Set([4241085061, 3956125808]); // weapon perks + intrinsic
+const COSMETIC_SOCKET_CATEGORY = 2048875504; // shader/ornament/tracker
+const ARMOR_TIER_CATEGORY = 4243480345; // armor mods
+
+function getPerkColumnsForDbItem(item) {
+  // returns [{ socketIndex, kind: 'curated'|'random', plugs: [{hash, name, icon, desc}] }]
+  if (!item.sk) return [];
+  const cats = item.sc || [];
+  const isArmor = item.it === 2;
+  const wantedIdx = new Set();
+  if (isArmor) {
+    // Armor: show ALL socket entries (shaders, mod slots, ornaments, etc.)
+    item.sk.forEach((_, idx) => wantedIdx.add(idx));
+  } else {
+    for (const c of cats) if (PERK_SOCKET_CATEGORIES.has(c.h)) c.i.forEach(i => wantedIdx.add(i));
+  }
+  const cols = [];
+  item.sk.forEach((se, idx) => {
+    if (!wantedIdx.has(idx) && cats.length && !isArmor) return; // if categories exist, restrict (weapons only)
+    let plugs = [];
+    if (se.rp && State.plugSets.has(se.rp)) {
+      plugs = State.plugSets.get(se.rp).map(h => State.plugs.get(h)).filter(Boolean);
+    }
+    if (!plugs.length && se.r) {
+      plugs = se.r.map(h => State.plugs.get(h)).filter(Boolean);
+    }
+    if (!plugs.length && se.s) {
+      const p = State.plugs.get(se.s); if (p) plugs = [p];
+    }
+    if (plugs.length) cols.push({ socketIndex: idx, plugs, kind: se.rp ? 'random' : 'curated' });
+  });
+  return cols;
+}
+
+// For owned items: use itemComponents.sockets.data[instanceId].sockets[] = [{plugHash, isEnabled}]
+function getPerksForLiveItem(instanceId) {
+  const liveSockets = State.profile?.itemComponents?.sockets?.data?.[instanceId]?.sockets;
+  if (!liveSockets) return [];
+  return liveSockets.map((s, idx) => {
+    if (!s.plugHash) return null;
+    const plug = State.plugs.get(s.plugHash);
+    if (!plug) return null;
+    return { socketIndex: idx, plug, enabled: !!s.isEnabled };
+  }).filter(Boolean);
+}
+
+/* ========= DESTINY API (high level) ========= */
+async function getMemberships() {
+  return api('/Platform/User/GetMembershipsForCurrentUser/', { auth: true });
+}
+async function getProfile(membershipType, membershipId) {
+  // 100=Profiles 102=ProfileInventories 200=Characters 201=CharacterInventories
+  // 205=CharacterEquipment 206=CharacterLoadouts 300=ItemInstances 304=ItemStats
+  // 305=ItemSockets 308=ItemPlugStates
+  const comps = [100,102,200,201,205,206,300,304,305,308].join(',');
+  return api(`/Platform/Destiny2/${membershipType}/Profile/${membershipId}/?components=${comps}`, { auth: true });
+}
+async function equipLoadout({ characterId, loadoutIndex }) {
+  return api('/Platform/Destiny2/Actions/Loadouts/EquipLoadout/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loadoutIndex, characterId,
+      membershipType: State.destinyMembership.membershipType,
+    }),
+  });
+}
+async function snapshotLoadout({ characterId, loadoutIndex, colorHash = 0, iconHash = 0, nameHash = 0 }) {
+  return api('/Platform/Destiny2/Actions/Loadouts/SnapshotLoadout/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loadoutIndex, characterId,
+      membershipType: State.destinyMembership.membershipType,
+      colorHash, iconHash, nameHash,
+    }),
+  });
+}
+async function clearLoadout({ characterId, loadoutIndex }) {
+  return api('/Platform/Destiny2/Actions/Loadouts/ClearLoadout/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      loadoutIndex, characterId,
+      membershipType: State.destinyMembership.membershipType,
+    }),
+  });
+}
+async function updateLoadoutIdentifiers({ characterId, loadoutIndex, colorHash, iconHash, nameHash }) {
+  return api('/Platform/Destiny2/Actions/Loadouts/UpdateLoadoutIdentifiers/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      colorHash, iconHash, nameHash,
+      loadoutIndex, characterId,
+      membershipType: State.destinyMembership.membershipType,
+    }),
+  });
+}
+async function transferItem({ itemReferenceHash, itemId, characterId, toVault, stackSize = 1 }) {
+  const body = {
+    itemReferenceHash, stackSize,
+    transferToVault: !!toVault,
+    itemId: itemId || '0',
+    characterId,
+    membershipType: State.destinyMembership.membershipType,
+  };
+  return api('/Platform/Destiny2/Actions/Items/TransferItem/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+async function equipItem({ itemId, characterId }) {
+  const body = { itemId, characterId, membershipType: State.destinyMembership.membershipType };
+  return api('/Platform/Destiny2/Actions/Items/EquipItem/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+async function setLockState({ itemId, characterId, lock }) {
+  // characterId is required even for vault items; pass any of the user's characters
+  const cid = characterId || Object.keys(State.profile?.characters?.data || {})[0];
+  const body = {
+    state: !!lock,
+    itemId,
+    characterId: cid,
+    membershipType: State.destinyMembership.membershipType,
+  };
+  return api('/Platform/Destiny2/Actions/Items/SetLockState/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+async function insertPlugFree({ itemId, characterId, socketIndex, plugItemHash, socketArrayType = 0 }) {
+  const body = {
+    plug: { socketIndex, socketArrayType, plugItemHash },
+    itemId, characterId,
+    membershipType: State.destinyMembership.membershipType,
+  };
+  return api('/Platform/Destiny2/Actions/Items/InsertSocketPlugFree/', {
+    method: 'POST', auth: true,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/* ========= UI: TABS ========= */
+function switchTab(name) {
+  State.view = name;
+  $$('header nav.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  $$('main > .view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
+  closeDetail();
+  if (name === 'guardians') renderGuardians();
+}
+
+/* ========= UI: ARMORY ========= */
+function populateCategorySelect() {
+  const sel = $('#f-cat');
+  sel.innerHTML = '<option value="">すべての種類</option>';
+  const subtypes = new Set();
+  State.items.forEach(it => { if (it.t) subtypes.add(`${it.it}|${it.t}`); });
+  const groups = { 3: [], 2: [], 16: [] };
+  for (const v of subtypes) {
+    const [it, name] = v.split('|');
+    if (groups[it]) groups[it].push(name);
+  }
+  for (const key in groups) groups[key].sort((a, b) => a.localeCompare(b, 'ja'));
+  function addGroup(label, key, mark) {
+    const o0 = document.createElement('option');
+    o0.value = mark; o0.textContent = `── ${label} ──`;
+    sel.appendChild(o0);
+    for (const n of groups[key]) {
+      const o = document.createElement('option'); o.value = `${key}|${n}`; o.textContent = `  ${n}`; sel.appendChild(o);
+    }
+  }
+  addGroup('ウェポン (全て)', '3', '__weapon');
+  addGroup('アーマー (全て)', '2', '__armor');
+  if (groups[16].length) addGroup('サブクラス (全て)', '16', '__subclass');
+}
+
+function applyFilters() {
+  const q = $('#q').value.trim().toLowerCase();
+  const cat = $('#f-cat').value;
+  const elem = +$('#f-elem').value || 0;
+  const tier = +$('#f-tier').value || 0;
+  const cls = $('#f-class').value;
+  State.filtered = State.items.filter(it => {
+    if (q && !it.n.toLowerCase().includes(q)) return false;
+    if (cat === '__weapon') { if (it.it !== 3) return false; }
+    else if (cat === '__armor') { if (it.it !== 2) return false; }
+    else if (cat === '__subclass') { if (it.it !== 16) return false; }
+    else if (cat) {
+      const [itStr, name] = cat.split('|');
+      if (it.it !== +itStr) return false;
+      if (it.t !== name) return false;
+    }
+    if (elem && it.dt !== elem) return false;
+    if (tier && it.tt !== tier) return false;
+    if (cls !== '' && it.cl !== +cls) return false;
+    return true;
+  });
+  State.filtered.sort((a, b) => ((b.tt || 0) - (a.tt || 0)) || a.n.localeCompare(b.n, 'ja'));
+  State.armoryPage = 0;
+  renderArmoryPage();
+}
+function renderArmoryPage() {
+  const start = State.armoryPage * PAGE_SIZE;
+  const slice = State.filtered.slice(start, start + PAGE_SIZE);
+  const g = $('#grid'); g.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  for (const it of slice) frag.appendChild(makeCard(it, 'db'));
+  g.appendChild(frag);
+  $('#count').textContent = `${State.filtered.length.toLocaleString()} 件`;
+  const lastPage = Math.max(0, Math.ceil(State.filtered.length / PAGE_SIZE) - 1);
+  $('#page-info').textContent = `${State.armoryPage + 1} / ${lastPage + 1}`;
+  $('#prev').disabled = State.armoryPage === 0;
+  $('#next').disabled = State.armoryPage >= lastPage;
+  g.scrollTop = 0;
+}
+
+function makeCard(it, kind, extra = {}) {
+  const el = document.createElement('div');
+  el.className = 'card';
+  el.dataset.hash = it.h;
+  el.dataset.tier = it.tt || 0;
+  if (kind === 'live') el.dataset.instance = extra.instanceId || '';
+  const st = extra.state || 0;
+  const masterwork = !!(st & ITEM_STATE.MASTERWORK);
+  const crafted = !!(st & ITEM_STATE.CRAFTED);
+  const locked = !!(st & ITEM_STATE.LOCKED);
+  if (masterwork) el.classList.add('masterwork');
+  if (crafted) el.classList.add('crafted');
+  const elem = ELEMENTS[it.dt];
+  el.innerHTML = `
+    <div class="icon-wrap">
+      <img loading="lazy" src="${BUNGIE}${it.i}" alt="">
+      ${it.w ? `<img class="wm" src="${BUNGIE}${it.w}" alt="">` : ''}
+      ${masterwork ? '<div class="mw-badge" title="マスターワーク">★</div>' : ''}
+      ${crafted ? '<div class="cf-badge" title="製作">⚒</div>' : ''}
+      ${locked ? '<div class="lk-badge" title="ロック">🔒</div>' : ''}
+    </div>
+    <div class="name" style="color:${tierColor(it.tt || 1)}">${escape(it.n)}</div>
+    <div class="meta">
+      ${elem ? `<span class="elem-dot" style="background:${elem.color}"></span>` : ''}
+      ${escape(it.t || ITEM_TYPES[it.it] || '')}
+      ${it.it === 2 && it.cl !== 3 ? ` · ${CLASSES[it.cl]}` : ''}
+    </div>
+    ${extra.equipped ? '<span class="equipped-mark">★</span>' : ''}
+  `;
+  el.addEventListener('click', () => selectItem(it, kind, extra));
+  return el;
+}
+
+/* ========= UI: GUARDIANS ========= */
+async function ensureDestinyMembership() {
+  if (State.destinyMembership) return;
+  const m = await getMemberships();
+  const primary = m.destinyMemberships.find(x => x.membershipId === m.primaryMembershipId) || m.destinyMemberships[0];
+  if (!primary) throw new Error('Destiny membership not found');
+  State.destinyMembership = primary;
+}
+
+async function loadProfile() {
+  await ensureDestinyMembership();
+  const dm = State.destinyMembership;
+  State.profile = await getProfile(dm.membershipType, dm.membershipId);
+  if (!State.charId) {
+    State.charId = Object.keys(State.profile.characters?.data || {})[0] || null;
+  }
+}
+
+function renderGuardians() {
+  if (!isLoggedIn()) {
+    $('#login-prompt').hidden = false;
+    $('#guardians-content').hidden = true;
+    $('#login-cid').textContent = clientId();
+    $('#login-redir').textContent = redirect();
+    return;
+  }
+  $('#login-prompt').hidden = true;
+  $('#guardians-content').hidden = false;
+  if (!State.profile) {
+    setLoading('プロファイル取得中...');
+    loadProfile().then(() => { setLoading(null); paintGuardians(); }).catch(e => { setLoading('取得失敗', e.message); });
+    return;
+  }
+  paintGuardians();
+}
+
+function paintGuardians() {
+  paintCharBar();
+  paintEquipped();
+  paintLoadouts();
+  paintInventory();
+  paintVault();
+}
+
+function findItemByInstanceId(id) {
+  if (!id) return null;
+  for (const cid in State.profile?.characterEquipment?.data || {}) {
+    for (const it of State.profile.characterEquipment.data[cid].items)
+      if (it.itemInstanceId === id) return it;
+  }
+  for (const cid in State.profile?.characterInventories?.data || {}) {
+    for (const it of State.profile.characterInventories.data[cid].items)
+      if (it.itemInstanceId === id) return it;
+  }
+  for (const it of State.profile?.profileInventory?.data?.items || [])
+    if (it.itemInstanceId === id) return it;
+  return null;
+}
+
+async function loadoutAction(label, fn) {
+  try {
+    setLoading(label + '...');
+    await fn();
+    State.profile = null;
+    await loadProfile();
+    setLoading(null);
+    paintGuardians();
+    toast(label + ' 完了');
+  } catch (e) {
+    setLoading(null);
+    toast(label + ' 失敗: ' + e.message, true);
+  }
+}
+
+function paintLoadouts() {
+  const wrap = $('#loadouts-grid');
+  wrap.innerHTML = '';
+  const ldRoot = State.profile?.characterLoadouts;
+  if (!ldRoot) {
+    wrap.innerHTML = '<div style="font-size:11px;color:var(--bad);padding:4px">⚠ characterLoadouts データなし — 再ログイン推奨</div>';
+    $('#loadouts-count').textContent = '—';
+    return;
+  }
+  if (!ldRoot.data) {
+    wrap.innerHTML = `<div style="font-size:11px;color:var(--muted);padding:4px">(privacy=${ldRoot.privacy} のため取得不可)</div>`;
+    $('#loadouts-count').textContent = '—';
+    return;
+  }
+  const loadouts = ldRoot.data[State.charId]?.loadouts || [];
+  let active = 0;
+  for (let i = 0; i < loadouts.length; i++) {
+    const ld = loadouts[i];
+    const isEmpty = !ld?.items?.length;
+    if (!isEmpty) active++;
+    const card = document.createElement('div');
+    card.className = 'loadout-card' + (isEmpty ? ' empty-slot' : '');
+
+    if (isEmpty) {
+      card.innerHTML = `
+        <div class="ld-icon"></div>
+        <span class="ld-name">(空 — スロット ${i + 1})</span>
+        <button class="ld-snap" data-index="${i}">⊕ 現在装備を保存</button>
+      `;
+      card.querySelector('.ld-snap').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!isLoggedIn()) { toast('ログインしてください', true); return; }
+        if (!confirm(`スロット ${i + 1} に現在の装備をスナップショット保存しますか?`)) return;
+        loadoutAction('スナップショット', () => snapshotLoadout({ characterId: State.charId, loadoutIndex: i }));
+      });
+    } else {
+      const name = State.loadoutNames.get(ld.nameHash) || `LOADOUT ${i + 1}`;
+      const iconPath = State.loadoutIcons.get(ld.iconHash);
+      const colorPath = State.loadoutColors.get(ld.colorHash);
+      card.dataset.index = i;
+      card.innerHTML = `
+        <div class="ld-icon" ${colorPath ? `style="background-image:url(${BUNGIE}${colorPath})"` : ''}>${iconPath ? `<img src="${BUNGIE}${iconPath}" alt="">` : ''}</div>
+        <span class="ld-name" title="${escape(name)}">${escape(name)}</span>
+        <button class="ld-equip" data-index="${i}">▶ EQUIP</button>
+        <button class="ld-clear" data-index="${i}" title="このロードアウトを削除">×</button>
+      `;
+      card.querySelector('.ld-equip').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!isLoggedIn()) { toast('ログインしてください', true); return; }
+        loadoutAction(`Loadout「${name}」装備`, () => equipLoadout({ characterId: State.charId, loadoutIndex: i }));
+      });
+      card.querySelector('.ld-clear').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!isLoggedIn()) { toast('ログインしてください', true); return; }
+        if (!confirm(`「${name}」を削除しますか?(スロット解放のみ — 装備中アイテム自体は無事です)`)) return;
+        loadoutAction(`Loadout「${name}」削除`, () => clearLoadout({ characterId: State.charId, loadoutIndex: i }));
+      });
+      // Click card → show detail
+      card.addEventListener('click', () => selectLoadout(i, ld, name, iconPath, colorPath));
+    }
+    wrap.appendChild(card);
+  }
+  $('#loadouts-count').textContent = `${active} / ${loadouts.length}`;
+}
+
+function paintCharBar() {
+  const chars = State.profile.characters?.data || {};
+  const bar = $('#char-bar'); bar.innerHTML = '';
+  for (const id in chars) {
+    const c = chars[id];
+    const el = document.createElement('div');
+    el.className = 'char-card' + (id === State.charId ? ' selected' : '');
+    el.dataset.class = c.classType;
+    el.innerHTML = `
+      <div class="emblem">${c.emblemPath ? `<img src="${BUNGIE}${c.emblemPath}" alt="">` : ''}</div>
+      <div class="label">
+        <div class="title">${escape(CLASSES[c.classType])}</div>
+        <div class="sub">${c.light} LIGHT · ${escape(RACES[c.raceType] || '')}</div>
+      </div>
+    `;
+    el.addEventListener('click', () => { State.charId = id; paintGuardians(); });
+    bar.appendChild(el);
+  }
+}
+
+function paintEquipped() {
+  const wrap = $('#equip-sections'); wrap.innerHTML = '';
+  const items = State.profile.characterEquipment?.data?.[State.charId]?.items || [];
+  const byBucket = new Map();
+  for (const it of items) byBucket.set(it.bucketHash, it);
+  const groups = [
+    { title: 'ウェポン', slots: EQUIP_SLOTS.filter(s => s.group === 'weapon') },
+    { title: 'アーマー', slots: EQUIP_SLOTS.filter(s => s.group === 'armor') },
+  ];
+  for (const g of groups) {
+    const section = document.createElement('div');
+    section.className = 'equip-section';
+    section.innerHTML = `<div class="section-label">${escape(g.title)}</div><div class="equip-grid"></div>`;
+    const grid = section.querySelector('.equip-grid');
+    for (const slot of g.slots) {
+      const it = byBucket.get(slot.h);
+      const cell = document.createElement('div');
+      cell.className = 'slot' + (it ? '' : ' empty');
+      let inner = '';
+      if (it) {
+        const def = State.byHash.get(it.itemHash);
+        const st = it.state || 0;
+        if (st & ITEM_STATE.MASTERWORK) cell.classList.add('masterwork');
+        if (st & ITEM_STATE.CRAFTED) cell.classList.add('crafted');
+        cell.dataset.tier = def?.tt || 0;
+        cell.title = def?.n || '';
+        inner += `<img src="${BUNGIE}${def?.i || ''}" alt="">`;
+        if (def?.w) inner += `<img class="wm" src="${BUNGIE}${def.w}">`;
+        if (st & ITEM_STATE.MASTERWORK) inner += '<div class="mw-badge" title="マスターワーク">★</div>';
+        if (st & ITEM_STATE.CRAFTED) inner += '<div class="cf-badge" title="製作">⚒</div>';
+        if (st & ITEM_STATE.LOCKED) inner += '<div class="lk-badge" title="ロック">🔒</div>';
+        cell.addEventListener('click', () => selectLiveItem(it, State.charId, true));
+      }
+      inner += `<div class="caption">${escape(slot.name)}</div>`;
+      cell.innerHTML = inner;
+      grid.appendChild(cell);
+    }
+    wrap.appendChild(section);
+  }
+}
+
+const SLOT_GROUPS = [
+  { title: 'ウェポン', slots: [
+    { name: 'キネティック', bk: 1498876634 },
+    { name: 'エネルギー',   bk: 2465295065 },
+    { name: 'パワー',       bk: 953998645 },
+  ]},
+  { title: 'アーマー', slots: [
+    { name: '頭',         bk: 3448274439 },
+    { name: '腕',         bk: 3551918588 },
+    { name: '胴体',       bk: 14239492 },
+    { name: '足',         bk: 20886954 },
+    { name: 'クラス装備', bk: 1585787867 },
+  ]},
+  { title: 'サブクラス', slots: [
+    { name: 'サブクラス', bk: SUBCLASS_BUCKET },
+  ]},
+  { title: 'その他', slots: [
+    { name: 'その他', bk: null }, // fallback bucket
+  ]},
+];
+
+const AMMO_LABEL = { 1: '通常', 2: '特殊', 3: 'パワー' };
+
+function appendCardsTo(grid, items, opts) {
+  for (const { raw, def } of items) {
+    grid.appendChild(makeCard(def, 'live', {
+      instanceId: raw.itemInstanceId,
+      characterId: opts.charId || null,
+      bucket: raw.bucketHash,
+      vault: !!opts.vault,
+      state: raw.state || 0,
+    }));
+  }
+}
+
+// For a single slot's items: group by weapon type display name,
+// ordered by ammo (Primary→Special→Heavy) then type name.
+// Inside each type: Energy slot is element-sorted, else tier→name.
+function renderWeaponSlot(slot, slotItems, opts) {
+  const sec = document.createElement('div');
+  sec.className = 'slot-section';
+  sec.innerHTML = `<div class="slot-section-title">${escape(slot.name)}<span class="count">${slotItems.length}</span></div>`;
+  // bucket by itemTypeDisplayName
+  const byType = new Map(); // typeName -> [{raw,def}]
+  for (const x of slotItems) {
+    const t = x.def.t || '(その他)';
+    if (!byType.has(t)) byType.set(t, []);
+    byType.get(t).push(x);
+  }
+  // sort items inside each type: element → tier desc → name
+  for (const arr of byType.values()) {
+    arr.sort((a, b) => {
+      if ((a.def.dt || 0) !== (b.def.dt || 0)) return (a.def.dt || 99) - (b.def.dt || 99);
+      const tA = a.def.tt || 0, tB = b.def.tt || 0;
+      if (tA !== tB) return tB - tA;
+      return a.def.n.localeCompare(b.def.n, 'ja');
+    });
+  }
+  // sort type entries by ammo, then name
+  const entries = Array.from(byType.entries()).sort((a, b) => {
+    const ammoA = a[1][0].def.am || 99, ammoB = b[1][0].def.am || 99;
+    if (ammoA !== ammoB) return ammoA - ammoB;
+    return a[0].localeCompare(b[0], 'ja');
+  });
+  let lastAmmo = null;
+  for (const [typeName, arr] of entries) {
+    const ammo = arr[0].def.am || 0;
+    if (ammo !== lastAmmo && AMMO_LABEL[ammo]) {
+      const ammoLabel = document.createElement('div');
+      ammoLabel.className = 'ammo-label';
+      ammoLabel.textContent = AMMO_LABEL[ammo];
+      sec.appendChild(ammoLabel);
+      lastAmmo = ammo;
+    }
+    const sub = document.createElement('div');
+    sub.className = 'type-section';
+    sub.innerHTML = `<div class="type-section-title">${escape(typeName)}<span class="count">${arr.length}</span></div><div class="inner-grid"></div>`;
+    appendCardsTo(sub.querySelector('.inner-grid'), arr, opts);
+    sec.appendChild(sub);
+  }
+  return sec;
+}
+
+// For an armor slot: group by class (Titan→Hunter→Warlock→Universal),
+// then within each class sort by tier desc, name.
+function renderArmorSlot(slot, slotItems, opts) {
+  const sec = document.createElement('div');
+  sec.className = 'slot-section';
+  sec.innerHTML = `<div class="slot-section-title">${escape(slot.name)}<span class="count">${slotItems.length}</span></div>`;
+  // bucket by class
+  const byClass = new Map();
+  for (const x of slotItems) {
+    const c = (x.def.cl == null ? 3 : x.def.cl);
+    if (!byClass.has(c)) byClass.set(c, []);
+    byClass.get(c).push(x);
+  }
+  for (const arr of byClass.values()) {
+    arr.sort((a, b) => ((b.def.tt || 0) - (a.def.tt || 0)) || a.def.n.localeCompare(b.def.n, 'ja'));
+  }
+  // Order: 0=Titan, 1=Hunter, 2=Warlock, 3=Universal
+  const entries = Array.from(byClass.entries()).sort((a, b) => a[0] - b[0]);
+  for (const [classType, arr] of entries) {
+    const sub = document.createElement('div');
+    sub.className = 'type-section';
+    sub.innerHTML = `<div class="type-section-title">${escape(CLASSES[classType] || '?')}<span class="count">${arr.length}</span></div><div class="inner-grid"></div>`;
+    appendCardsTo(sub.querySelector('.inner-grid'), arr, opts);
+    sec.appendChild(sub);
+  }
+  return sec;
+}
+
+function renderGroupedGrid(containerId, items, opts = {}) {
+  const container = $(containerId);
+  container.innerHTML = '';
+  // Group items by item.def.bk (item's natural slot)
+  const byBucket = new Map();
+  const known = new Set();
+  for (const g of SLOT_GROUPS) for (const s of g.slots) if (s.bk != null) known.add(s.bk);
+  for (const it of items) {
+    const def = State.byHash.get(it.itemHash);
+    if (!def) continue;
+    const key = known.has(def.bk) ? def.bk : null;
+    if (!byBucket.has(key)) byBucket.set(key, []);
+    byBucket.get(key).push({ raw: it, def });
+  }
+  let totalRendered = 0;
+  for (const group of SLOT_GROUPS) {
+    const sectionEls = [];
+    let groupCount = 0;
+    const isWeaponGroup = group.title === 'ウェポン';
+    const isArmorGroup = group.title === 'アーマー';
+    for (const slot of group.slots) {
+      const slotItems = byBucket.get(slot.bk) || [];
+      if (!slotItems.length) continue;
+      groupCount += slotItems.length;
+      let sec;
+      if (opts.vault && isWeaponGroup) {
+        sec = renderWeaponSlot(slot, slotItems, opts);
+      } else if (opts.vault && isArmorGroup) {
+        sec = renderArmorSlot(slot, slotItems, opts);
+      } else {
+        // Simple sort: tier desc, then name
+        slotItems.sort((a, b) => ((b.def.tt || 0) - (a.def.tt || 0)) || a.def.n.localeCompare(b.def.n, 'ja'));
+        sec = document.createElement('div');
+        sec.className = 'slot-section';
+        const showSlotTitle = group.slots.length > 1;
+        sec.innerHTML = showSlotTitle
+          ? `<div class="slot-section-title">${escape(slot.name)}<span class="count">${slotItems.length}</span></div><div class="inner-grid"></div>`
+          : `<div class="inner-grid"></div>`;
+        appendCardsTo(sec.querySelector('.inner-grid'), slotItems, opts);
+      }
+      sectionEls.push(sec);
+    }
+    if (!sectionEls.length) continue;
+    totalRendered += groupCount;
+    const groupEl = document.createElement('div');
+    groupEl.className = 'inv-group';
+    groupEl.innerHTML = `<div class="group-header">${escape(group.title)}<span class="count">${groupCount}</span></div>`;
+    sectionEls.forEach(s => groupEl.appendChild(s));
+    container.appendChild(groupEl);
+  }
+  if (totalRendered === 0) {
+    container.innerHTML = '<div class="inv-empty">(該当アイテムなし)</div>';
+  }
+}
+
+function paintInventory() {
+  const items = State.profile.characterInventories?.data?.[State.charId]?.items || [];
+  const valid = items.filter(it => {
+    const def = State.byHash.get(it.itemHash);
+    return def && (def.it === 2 || def.it === 3 || def.it === 16);
+  });
+  $('#inv-count').textContent = valid.length;
+  renderGroupedGrid('#inv-groups', valid, { charId: State.charId });
+}
+
+function paintVault() {
+  const q = ($('#vault-q').value || '').trim().toLowerCase();
+  const all = State.profile.profileInventory?.data?.items || [];
+  const inVault = all.filter(it => it.bucketHash === VAULT_BUCKET);
+  const valid = inVault.filter(it => {
+    const def = State.byHash.get(it.itemHash);
+    if (!def) return false;
+    if (def.it !== 2 && def.it !== 3 && def.it !== 20) return false;
+    if (q && !def.n.toLowerCase().includes(q)) return false;
+    return true;
+  });
+  $('#vault-count').textContent = q ? `${valid.length} / ${inVault.length}` : valid.length;
+  renderGroupedGrid('#vault-groups', valid, { vault: true });
+}
+
+/* ========= SELECT + DETAIL ========= */
+function selectItem(it, kind, extra) {
+  State.selected = { kind, data: it, ...extra };
+  $$('.card.selected').forEach(c => c.classList.remove('selected'));
+  const sel = document.querySelector(`.card[data-hash="${it.h}"]${extra?.instanceId ? `[data-instance="${extra.instanceId}"]` : ''}`);
+  sel?.classList.add('selected');
+  renderDetail();
+}
+function selectLiveItem(rawItem, charId, equipped) {
+  const def = State.byHash.get(rawItem.itemHash);
+  if (!def) return;
+  selectItem(def, 'live', {
+    instanceId: rawItem.itemInstanceId, characterId: charId,
+    bucket: rawItem.bucketHash, equipped, state: rawItem.state || 0,
+  });
+}
+
+let _leState = null;
+function openLoadoutEditor(loadoutIndex, ld) {
+  if (!isLoggedIn()) { toast('ログインしてください', true); return; }
+  _leState = {
+    loadoutIndex,
+    nameHash: ld.nameHash || 0,
+    iconHash: ld.iconHash || 0,
+    colorHash: ld.colorHash || 0,
+  };
+  // Populate name grid
+  const ng = $('#le-name-grid'); ng.innerHTML = '';
+  for (const [hash, name] of State.loadoutNames) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'le-name' + (+hash === _leState.nameHash ? ' selected' : '');
+    btn.dataset.hash = hash;
+    btn.textContent = name;
+    btn.addEventListener('click', () => {
+      _leState.nameHash = +hash;
+      $$('#le-name-grid .le-name').forEach(b => b.classList.toggle('selected', +b.dataset.hash === _leState.nameHash));
+      updateLoadoutPreview();
+    });
+    ng.appendChild(btn);
+  }
+  // Icon grid
+  const ig = $('#le-icon-grid'); ig.innerHTML = '';
+  for (const [hash, path] of State.loadoutIcons) {
+    const cell = document.createElement('div');
+    cell.className = 'le-icon-cell' + (+hash === _leState.iconHash ? ' selected' : '');
+    cell.dataset.hash = hash;
+    cell.innerHTML = `<img src="${BUNGIE}${path}" alt="">`;
+    cell.addEventListener('click', () => {
+      _leState.iconHash = +hash;
+      $$('#le-icon-grid .le-icon-cell').forEach(b => b.classList.toggle('selected', +b.dataset.hash === _leState.iconHash));
+      updateLoadoutPreview();
+    });
+    ig.appendChild(cell);
+  }
+  // Color grid
+  const cg = $('#le-color-grid'); cg.innerHTML = '';
+  for (const [hash, path] of State.loadoutColors) {
+    const cell = document.createElement('div');
+    cell.className = 'le-color-cell' + (+hash === _leState.colorHash ? ' selected' : '');
+    cell.dataset.hash = hash;
+    cell.style.backgroundImage = `url(${BUNGIE}${path})`;
+    cell.addEventListener('click', () => {
+      _leState.colorHash = +hash;
+      $$('#le-color-grid .le-color-cell').forEach(b => b.classList.toggle('selected', +b.dataset.hash === _leState.colorHash));
+      updateLoadoutPreview();
+    });
+    cg.appendChild(cell);
+  }
+  updateLoadoutPreview();
+  $('#loadout-editor-modal').classList.add('show');
+}
+function updateLoadoutPreview() {
+  if (!_leState) return;
+  const name = State.loadoutNames.get(_leState.nameHash) || '(未選択)';
+  const iconPath = State.loadoutIcons.get(_leState.iconHash);
+  const colorPath = State.loadoutColors.get(_leState.colorHash);
+  $('#le-preview').innerHTML = `
+    <div class="ld-icon" ${colorPath ? `style="background-image:url(${BUNGIE}${colorPath})"` : ''}>
+      ${iconPath ? `<img src="${BUNGIE}${iconPath}" alt="">` : ''}
+    </div>
+    <div class="le-preview-name">${escape(name)}</div>
+  `;
+}
+function bindLoadoutEditor() {
+  $('#le-save').addEventListener('click', () => {
+    if (!_leState) return;
+    const s = _leState;
+    $('#loadout-editor-modal').classList.remove('show');
+    loadoutAction('ロードアウト編集', () => updateLoadoutIdentifiers({
+      characterId: State.charId,
+      loadoutIndex: s.loadoutIndex,
+      colorHash: s.colorHash,
+      iconHash: s.iconHash,
+      nameHash: s.nameHash,
+    }));
+  });
+  $('#le-cancel').addEventListener('click', () => $('#loadout-editor-modal').classList.remove('show'));
+  $('#loadout-editor-modal').addEventListener('click', e => {
+    if (e.target.id === 'loadout-editor-modal') $('#loadout-editor-modal').classList.remove('show');
+  });
+}
+
+function selectLoadout(index, loadout, name, iconPath, colorPath) {
+  State.selected = { kind: 'loadout', index, loadout, name, iconPath, colorPath };
+  $$('.loadout-card.selected').forEach(c => c.classList.remove('selected'));
+  document.querySelector(`.loadout-card[data-index="${index}"]`)?.classList.add('selected');
+  renderDetail();
+}
+function closeDetail() {
+  $('#detail').classList.remove('show');
+  State.selected = null;
+  $$('.card.selected').forEach(c => c.classList.remove('selected'));
+}
+
+function renderDetail() {
+  if (!State.selected) return closeDetail();
+  if (State.selected.kind === 'loadout') return renderLoadoutDetail();
+  const aside = $('#detail');
+  aside.classList.add('show');
+  const it = State.selected.data;
+  const elem = ELEMENTS[it.dt];
+  const isLive = State.selected.kind === 'live';
+  const inst = State.selected.instanceId;
+  const liveStats = inst && State.profile?.itemComponents?.instances?.data?.[inst];
+  const stats = renderStats(it, isLive ? inst : null);
+  const perks = renderPerks(it, isLive ? inst : null);
+  const actions = isLive ? renderActions() : '';
+
+  aside.innerHTML = `
+    <div class="head">
+      <button class="close" id="detail-close">×</button>
+      <div class="icon-row">
+        <div class="big-icon">
+          <img src="${BUNGIE}${it.i}" alt="">
+          ${it.w ? `<img class="wm" src="${BUNGIE}${it.w}">` : ''}
+        </div>
+        <div class="meta">
+          <h2 style="color:${tierColor(it.tt || 1)}">${escape(it.n)}</h2>
+          <div class="sub">
+            ${escape(it.t || ITEM_TYPES[it.it])}
+            ${elem ? ` · <span style="color:${elem.color}">${elem.name}</span>` : ''}
+            ${it.it === 2 ? ` · ${CLASSES[it.cl]}` : ''}
+            ${liveStats?.primaryStat ? ` · ⚡ ${liveStats.primaryStat.value}` : ''}
+          </div>
+          <span class="tier" style="background:${tierColor(it.tt || 1)};color:#0b0e13">${escape(it.ttn || '')}</span>
+          ${isLive && State.selected?.state ? (() => {
+            const st = State.selected.state;
+            const tags = [];
+            if (st & ITEM_STATE.MASTERWORK) tags.push('<span class="tier" style="background:#f0c14a;color:#1a1100;margin-left:4px">★ MASTERWORK</span>');
+            if (st & ITEM_STATE.CRAFTED) tags.push('<span class="tier" style="background:#cf6b3a;color:#fff;margin-left:4px">⚒ CRAFTED</span>');
+            if (st & ITEM_STATE.LOCKED) tags.push('<span class="tier" style="background:#444;color:#ddd;margin-left:4px">🔒 LOCKED</span>');
+            return tags.join('');
+          })() : ''}
+        </div>
+      </div>
+    </div>
+    ${actions ? `<section><h3>ACTIONS</h3>${actions}</section>` : ''}
+    ${stats ? `<section><h3>STATS</h3>${stats}</section>` : ''}
+    ${perks ? `<section><h3>${isLive ? 'EQUIPPED PERKS' : 'PERKS (CURATED / RANDOM ROLL)'}</h3>${perks}</section>` : ''}
+    ${it.d ? `<section><h3>DESCRIPTION</h3><div class="desc">${escape(it.d)}</div></section>` : ''}
+    ${it.fx ? `<section><h3>FLAVOR</h3><blockquote class="flavor">${escape(it.fx)}</blockquote></section>` : ''}
+    ${it.s ? `<section><h3>SCREENSHOT</h3><img class="shot" loading="lazy" src="${BUNGIE}${it.s}" alt=""></section>` : ''}
+    <section><h3>DATA</h3>
+      <dl class="kv">
+        <dt>hash</dt><dd><code>${it.h}</code></dd>
+        ${inst ? `<dt>instance</dt><dd><code>${inst}</code></dd>` : ''}
+        <dt>itemType</dt><dd>${it.it} (${ITEM_TYPES[it.it] || '?'})</dd>
+        ${it.is ? `<dt>subType</dt><dd>${it.is}</dd>` : ''}
+        ${it.tt ? `<dt>tierType</dt><dd>${it.tt} ${escape(it.ttn || '')}</dd>` : ''}
+        ${it.cl != null ? `<dt>classType</dt><dd>${it.cl} ${CLASSES[it.cl] || ''}</dd>` : ''}
+        ${it.dt ? `<dt>damage</dt><dd>${it.dt} ${elem?.name || ''}</dd>` : ''}
+      </dl>
+    </section>
+  `;
+  $('#detail-close').addEventListener('click', closeDetail);
+  if (isLive) bindActions();
+}
+
+function renderStats(item, instanceId) {
+  const isArmor = item.it === 2;
+  const isWeapon = item.it === 3;
+  if (!isArmor && !isWeapon) return '';
+  // Choose source: live item stats (component 304) override db base stats
+  let statValues = {};
+  if (instanceId) {
+    const live = State.profile?.itemComponents?.stats?.data?.[instanceId]?.stats;
+    if (live) for (const k in live) statValues[k] = live[k].value;
+  }
+  if (!Object.keys(statValues).length && item.st) statValues = item.st;
+  if (!Object.keys(statValues).length) return '';
+  // Pick which stats to show
+  let entries;
+  if (isArmor) {
+    entries = ARMOR_STAT_HASHES.filter(h => statValues[h] != null).map(h => ({ h, v: statValues[h] }));
+  } else {
+    // Weapons: priority order first, then any remaining present stats sorted by stat index
+    const seen = new Set();
+    entries = [];
+    for (const h of WEAPON_STAT_PRIORITY) {
+      if (statValues[h] != null && State.statDefs.has(h)) { entries.push({ h, v: statValues[h] }); seen.add(h); }
+    }
+    const remaining = Object.entries(statValues)
+      .map(([k, v]) => ({ h: +k, v }))
+      .filter(e => !seen.has(e.h) && State.statDefs.has(e.h));
+    remaining.sort((a, b) => (State.statDefs.get(a.h)?.idx || 0) - (State.statDefs.get(b.h)?.idx || 0));
+    entries.push(...remaining);
+  }
+  if (!entries.length) return '';
+  const maxBase = isArmor ? 42 : 100; // armor stat max per piece ≈ 42, weapon stats are 0-100
+  const rowClass = isArmor ? 'stat-row armor' : 'stat-row';
+  return `<div class="stats-block">${entries.map(e => {
+    const def = State.statDefs.get(e.h);
+    const name = def?.n || `Stat ${e.h}`;
+    const pct = Math.max(0, Math.min(100, (e.v / maxBase) * 100));
+    return `<div class="${rowClass}" title="${escape(def?.d || '')}">
+      <div class="stat-name">${escape(name)}</div>
+      <div class="stat-bar"><div class="stat-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      <div class="stat-value">${e.v}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function renderLoadoutDetail() {
+  const s = State.selected;
+  const ld = s.loadout;
+  const aside = $('#detail');
+  aside.classList.add('show');
+  const charClass = State.profile?.characters?.data?.[State.charId]?.classType;
+  const charLight = State.profile?.characters?.data?.[State.charId]?.light;
+  // Resolve items
+  const resolved = ld.items.map(it => {
+    const live = findItemByInstanceId(it.itemInstanceId);
+    const def = live ? State.byHash.get(live.itemHash) : null;
+    return { it, live, def };
+  });
+  const weapons = resolved.filter(x => x.def?.it === 3);
+  const armor = resolved.filter(x => x.def?.it === 2);
+  const subclassItems = resolved.filter(x => x.def?.it === 16);
+  const missing = resolved.filter(x => !x.def);
+
+  // Resolve subclass plug hashes (super, abilities, aspects, fragments) → full perkRow listing
+  const renderSubclassPlugs = (x) => {
+    const hashes = (x.it.plugItemHashes || []).filter(h => h && h !== 0);
+    const plugs = hashes.map(h => State.plugs.get(h) || State.byHash.get(h)).filter(Boolean);
+    if (!plugs.length) return '';
+    return `<div class="perks subclass-perks">${plugs.map(p => perkRow(p, false, true)).join('')}</div>`;
+  };
+
+  const renderItem = (x) => {
+    const { def, live } = x;
+    if (!def) return `<div class="ld-item-row missing">
+      <div class="ld-item-icon-wrap"></div>
+      <div class="ld-item-body"><div class="ld-item-name">(未所持アイテム)</div>
+      <div class="ld-item-meta">instance: ${escape(x.it.itemInstanceId || '?')}</div></div></div>`;
+    const elem = ELEMENTS[def.dt];
+    const st = live?.state || 0;
+    const mw = (st & ITEM_STATE.MASTERWORK) ? ' mw' : (st & ITEM_STATE.CRAFTED) ? ' crafted' : '';
+    // Get stats (live preferred over def base)
+    const liveStats = live?.itemInstanceId
+      ? State.profile?.itemComponents?.stats?.data?.[live.itemInstanceId]?.stats
+      : null;
+    let statVals = {};
+    if (liveStats) for (const k in liveStats) statVals[k] = liveStats[k].value;
+    if (!Object.keys(statVals).length && def.st) statVals = def.st;
+    let statsHtml = '';
+    if (def.it === 3) {
+      const keys = WEAPON_STAT_PRIORITY.filter(h => statVals[h] != null).slice(0, 6);
+      statsHtml = keys.map(h => {
+        const name = State.statDefs.get(h)?.n || h;
+        return `<span class="k">${escape(name)}</span><span>${statVals[h]}</span>`;
+      }).join('');
+    } else if (def.it === 2) {
+      const keys = ARMOR_STAT_HASHES.filter(h => statVals[h] != null);
+      statsHtml = keys.map(h => {
+        const name = State.statDefs.get(h)?.n || h;
+        return `<span class="k">${escape(name)}</span><span>${statVals[h]}</span>`;
+      }).join('');
+    }
+    const slotLabel = def.it === 2 && def.cl !== 3 ? ` · ${CLASSES[def.cl]}` : '';
+    return `<div class="ld-item-row" data-instance="${live?.itemInstanceId || ''}">
+      <div class="ld-item-icon-wrap${mw}"><img src="${BUNGIE}${def.i}" alt=""></div>
+      <div class="ld-item-body">
+        <div class="ld-item-name" style="color:${tierColor(def.tt || 1)}">${escape(def.n)}${(st & ITEM_STATE.MASTERWORK) ? ' ★' : ''}${(st & ITEM_STATE.CRAFTED) ? ' ⚒' : ''}</div>
+        <div class="ld-item-meta">${escape(def.t || '')}${elem ? ` · <span style="color:${elem.color}">${elem.name}</span>` : ''}${slotLabel}</div>
+        ${statsHtml ? `<div class="ld-item-stats">${statsHtml}</div>` : ''}
+      </div>
+    </div>`;
+  };
+
+  aside.innerHTML = `
+    <div class="head">
+      <button class="close" id="detail-close">×</button>
+      <div class="icon-row">
+        <div class="big-icon" style="background:${s.colorPath ? `url(${BUNGIE}${s.colorPath}) center/cover` : 'var(--panel2)'}; border-radius:50%; padding:8px">
+          ${s.iconPath ? `<img src="${BUNGIE}${s.iconPath}" alt="" style="filter:drop-shadow(0 0 2px rgba(0,0,0,0.7))">` : ''}
+        </div>
+        <div class="meta">
+          <h2>${escape(s.name)}</h2>
+          <div class="sub">LOADOUT · スロット ${s.index + 1} · ${escape(CLASSES[charClass] || '?')}${charLight ? ` · ${charLight} LIGHT` : ''}</div>
+        </div>
+      </div>
+    </div>
+    <section><h3>ACTIONS</h3>
+      <div class="actions">
+        <button id="ld-detail-equip">▶ このロードアウトを装備</button>
+        <button id="ld-detail-rename">✎ 名前 / アイコン / 色を変更</button>
+        <button id="ld-detail-clear">× ロードアウト削除</button>
+        <div class="feedback" id="ld-detail-feedback"></div>
+      </div>
+    </section>
+    ${subclassItems.length ? `<section><h3>SUBCLASS</h3>${subclassItems.map(x => renderItem(x) + renderSubclassPlugs(x)).join('')}</section>` : ''}
+    ${weapons.length ? `<section><h3>WEAPONS (${weapons.length})</h3>${weapons.map(renderItem).join('')}</section>` : ''}
+    ${armor.length ? `<section><h3>ARMOR (${armor.length})</h3>${armor.map(renderItem).join('')}</section>` : ''}
+    ${missing.length ? `<section><h3>MISSING (${missing.length})</h3>${missing.map(renderItem).join('')}</section>` : ''}
+    <section><h3>DATA</h3>
+      <dl class="kv">
+        <dt>slot index</dt><dd>${s.index}</dd>
+        <dt>nameHash</dt><dd><code>${ld.nameHash}</code></dd>
+        <dt>iconHash</dt><dd><code>${ld.iconHash}</code></dd>
+        <dt>colorHash</dt><dd><code>${ld.colorHash}</code></dd>
+        <dt>items</dt><dd>${ld.items.length}</dd>
+      </dl>
+    </section>
+  `;
+  $('#detail-close').addEventListener('click', closeDetail);
+  $('#ld-detail-equip').addEventListener('click', () => {
+    if (!isLoggedIn()) { toast('ログインしてください', true); return; }
+    loadoutAction(`Loadout「${s.name}」装備`, () => equipLoadout({ characterId: State.charId, loadoutIndex: s.index }));
+  });
+  $('#ld-detail-clear').addEventListener('click', () => {
+    if (!isLoggedIn()) { toast('ログインしてください', true); return; }
+    if (!confirm(`「${s.name}」を削除しますか?`)) return;
+    loadoutAction(`Loadout「${s.name}」削除`, () => clearLoadout({ characterId: State.charId, loadoutIndex: s.index }));
+  });
+  $('#ld-detail-rename').addEventListener('click', () => openLoadoutEditor(s.index, ld));
+  // Click on item row → jump to that item's detail
+  aside.querySelectorAll('.ld-item-row[data-instance]').forEach(el => {
+    const inst = el.dataset.instance;
+    if (!inst) return;
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', () => {
+      const live = findItemByInstanceId(inst);
+      if (live) selectLiveItem(live, State.charId, false);
+    });
+  });
+}
+
+function renderPerks(item, instanceId) {
+  if (instanceId) {
+    const live = getPerksForLiveItem(instanceId);
+    if (!live.length) return '';
+    return `<div class="perks"><div class="perk-col"><div class="perk-list">${live.map(p => perkRow(p.plug, true, p.enabled)).join('')}</div></div></div>`;
+  }
+  const cols = getPerkColumnsForDbItem(item);
+  if (!cols.length) return '';
+  return `<div class="perks">${cols.map(col => `
+    <div class="perk-col">
+      <div class="col-title">Socket ${col.socketIndex} · ${col.kind === 'random' ? 'RANDOM ROLL' : 'CURATED'} · ${col.plugs.length} 候補</div>
+      <div class="perk-list">${col.plugs.map(p => perkRow(p, false, false)).join('')}</div>
+    </div>`).join('')}</div>`;
+}
+function perkRow(plug, equipped, enabled) {
+  const classes = ['perk-row'];
+  if (equipped) classes.push('equipped');
+  if (enabled === false) classes.push('disabled');
+  return `<div class="${classes.join(' ')}">
+    <div class="perk-icon"><img src="${BUNGIE}${plug.i}" alt=""></div>
+    <div class="perk-body">
+      <div class="perk-name">${escape(plug.n)}</div>
+      ${plug.d ? `<div class="perk-desc">${escape(plug.d)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderActions() {
+  const s = State.selected;
+  if (!s || !s.instanceId) return '';
+  const isVault = s.bucket === VAULT_BUCKET;
+  const isLocked = !!((s.state || 0) & ITEM_STATE.LOCKED);
+  const chars = State.profile.characters?.data || {};
+  const otherChars = Object.entries(chars).filter(([id]) => id !== s.characterId);
+  return `
+    <div class="actions">
+      <button id="act-lock">${isLocked ? '🔓 ロック解除' : '🔒 ロックする'}</button>
+      ${!isVault && !s.equipped ? `<button id="act-equip">▶ EQUIP (${CLASSES[chars[s.characterId]?.classType] || '?'})</button>` : ''}
+      ${!isVault ? `<button id="act-to-vault">→ Vault に転送</button>` : ''}
+      ${isVault ? otherChars.length > 0
+        ? otherChars.map(([id, c]) => `<button data-to-char="${id}" class="act-from-vault">← ${CLASSES[c.classType]} に転送</button>`).join('')
+        : '' : ''}
+      ${!isVault ? otherChars.map(([id, c]) => `<button data-to-char="${id}" class="act-move">↔ ${CLASSES[c.classType]} に移動 (Vault経由)</button>`).join('') : ''}
+      <div class="feedback" id="act-feedback"></div>
+    </div>
+  `;
+}
+
+function bindActions() {
+  const s = State.selected;
+  if (!s?.instanceId) return;
+  const feedback = $('#act-feedback');
+  async function withFeedback(label, fn) {
+    feedback.classList.remove('err'); feedback.textContent = label + '...';
+    try {
+      await fn();
+      feedback.textContent = label + ' OK';
+      toast(label + ' OK');
+      // Reload profile to refresh state
+      State.profile = null;
+      await loadProfile();
+      paintGuardians();
+      // Re-find item and update selection
+      closeDetail();
+    } catch (e) {
+      console.error(e);
+      feedback.classList.add('err'); feedback.textContent = e.message;
+      toast(e.message, true);
+    }
+  }
+  const isLocked = !!((s.state || 0) & ITEM_STATE.LOCKED);
+  $('#act-lock')?.addEventListener('click', () => withFeedback(isLocked ? '🔓 ロック解除' : '🔒 ロック', () =>
+    setLockState({ itemId: s.instanceId, characterId: s.characterId, lock: !isLocked })));
+  $('#act-equip')?.addEventListener('click', () => withFeedback('Equip', () =>
+    equipItem({ itemId: s.instanceId, characterId: s.characterId })));
+  $('#act-to-vault')?.addEventListener('click', () => withFeedback('→ Vault', () =>
+    transferItem({ itemReferenceHash: s.data.h, itemId: s.instanceId, characterId: s.characterId, toVault: true })));
+  $$('.act-from-vault').forEach(btn => btn.addEventListener('click', () => {
+    const to = btn.dataset.toChar;
+    withFeedback(`← ${CLASSES[State.profile.characters.data[to].classType]} に`, () =>
+      transferItem({ itemReferenceHash: s.data.h, itemId: s.instanceId, characterId: to, toVault: false }));
+  }));
+  $$('.act-move').forEach(btn => btn.addEventListener('click', () => {
+    const to = btn.dataset.toChar;
+    withFeedback(`↔ ${CLASSES[State.profile.characters.data[to].classType]} へ移動`, async () => {
+      await transferItem({ itemReferenceHash: s.data.h, itemId: s.instanceId, characterId: s.characterId, toVault: true });
+      await transferItem({ itemReferenceHash: s.data.h, itemId: s.instanceId, characterId: to, toVault: false });
+    });
+  }));
+}
+
+/* ========= SETTINGS ========= */
+function openSettings() { $('#settings-modal').classList.add('show'); }
+function closeSettings() { $('#settings-modal').classList.remove('show'); }
+function bindSettings() {
+  $('#settings-cancel').addEventListener('click', closeSettings);
+  $('#settings-clear-cache').addEventListener('click', async () => {
+    if (!confirm('IndexedDB を初期化しますか?(マニフェスト再ダウンロード)')) return;
+    await dbClear();
+    location.reload();
+  });
+  $('#settings-logout').addEventListener('click', () => { logout(); closeSettings(); toast('ログアウトしました'); });
+  $('#settings-modal').addEventListener('click', e => { if (e.target.id === 'settings-modal') closeSettings(); });
+}
+
+/* ========= BOOT ========= */
+function bindEvents() {
+  $$('header nav.tabs button').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+  $('#vault-q').addEventListener('input', debounce(() => { if (State.profile) paintVault(); }, 150));
+  $('#refresh-profile-btn').addEventListener('click', async () => {
+    if (!isLoggedIn()) { toast('ログインしてください', true); return; }
+    try {
+      setLoading('プロファイル再取得中...');
+      State.profile = null;
+      await loadProfile();
+      setLoading(null);
+      paintGuardians();
+      toast('プロファイル更新完了');
+    } catch (e) {
+      setLoading(null);
+      toast('取得失敗: ' + e.message, true);
+    }
+  });
+  // Mobile sub-tabs (only effect via CSS at <=700px)
+  $$('.g-mtabs button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const sec = btn.dataset.msection;
+      $('#guardians-content').dataset.msection = sec;
+      $$('.g-mtabs button').forEach(b => b.classList.toggle('active', b.dataset.msection === sec));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+  $('#loadouts-toggle').addEventListener('click', () => {
+    const row = $('#loadouts-row');
+    row.classList.toggle('collapsed');
+    try { localStorage.setItem('d2_loadouts_collapsed', row.classList.contains('collapsed') ? '1' : ''); } catch {}
+  });
+  // Restore collapse preference
+  try { if (localStorage.getItem('d2_loadouts_collapsed') === '1') $('#loadouts-row').classList.add('collapsed'); } catch {}
+  $('#login-btn').addEventListener('click', () => isLoggedIn() ? (logout(), toast('ログアウト')) : startAuth());
+  $('#big-login').addEventListener('click', startAuth);
+  $('#refresh-btn').addEventListener('click', async () => {
+    if (!confirm('マニフェストを再ダウンロードしますか?')) return;
+    await dbClear(); location.reload();
+  });
+  $('#settings-btn').addEventListener('click', openSettings);
+  bindSettings();
+
+  $('#q').addEventListener('input', debounce(applyFilters, 150));
+  ['#f-cat','#f-elem','#f-tier','#f-class'].forEach(s => $(s).addEventListener('change', applyFilters));
+  $('#prev').addEventListener('click', () => { if (State.armoryPage > 0) { State.armoryPage--; renderArmoryPage(); } });
+  $('#next').addEventListener('click', () => {
+    if ((State.armoryPage + 1) * PAGE_SIZE < State.filtered.length) { State.armoryPage++; renderArmoryPage(); }
+  });
+}
+
+async function init() {
+  try {
+    loadOauth();
+    bindEvents();
+    bindAuthModal();
+    bindLoadoutEditor();
+    await loadManifest();
+    populateCategorySelect();
+    setStatus(`${State.items.length.toLocaleString()} アイテム · v${(State.version || '?').split('-')[0]}`);
+    applyFilters();
+    if (isLoggedIn()) {
+      $('#login-btn').textContent = '★ LOGOUT';
+      $('#login-btn').classList.add('logged-in');
+    }
+    setLoading(null);
+  } catch (e) {
+    console.error(e);
+    setLoading('読み込み失敗', `${e.message}\n\nSETTINGS から API Key / Origin を確認してください。`);
+  }
+}
+init();
+</script>
+</body>
+</html>
