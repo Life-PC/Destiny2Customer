@@ -980,7 +980,12 @@ function saveOauth() {
   else localStorage.removeItem('d2_oauth');
 }
 function isLoggedIn() {
-  return !!(State.oauth && State.oauth.refresh && Date.now() < State.oauth.refreshExp);
+  if (!State.oauth) return false;
+  const now = Date.now();
+  if (State.oauth.refresh && State.oauth.refreshExp && now < State.oauth.refreshExp) return true;
+  // Fallback: access token alone is enough while it's valid
+  if (State.oauth.access && State.oauth.accessExp && now < State.oauth.accessExp) return true;
+  return false;
 }
 function logout() {
   State.oauth = null; saveOauth();
@@ -1003,6 +1008,7 @@ function startAuth() {
 // Called early in init() — if URL has ?code= treat this load as an OAuth callback.
 async function handleOAuthRedirect() {
   const params = new URLSearchParams(location.search);
+  console.log('[OAuth] handleOAuthRedirect, search=', location.search);
   if (params.has('error')) {
     history.replaceState(null, '', location.pathname);
     toast('OAuth: ' + params.get('error'), true);
@@ -1012,24 +1018,34 @@ async function handleOAuthRedirect() {
   if (!code) return false;
   const state = params.get('state');
   const saved = sessionStorage.getItem('d2_state');
+  console.log('[OAuth] code=' + code.slice(0,6) + '... state=' + state + ' saved=' + saved);
   // Clean URL immediately so reloads don't re-exchange the (now spent) code
   history.replaceState(null, '', location.pathname);
   if (!saved || state !== saved) {
-    toast('OAuth state mismatch — もう一度 LOGIN してください', true);
+    setLoading('state mismatch', 'OAuth state mismatch — もう一度 LOGIN してください\n(saved=' + saved + ', got=' + state + ')');
+    setTimeout(() => setLoading(null), 6000);
     return false;
   }
   sessionStorage.removeItem('d2_state');
   setLoading('トークン取得中...');
   try {
     await exchangeCodeForToken(code);
-    toast('ログイン完了');
+    setLoading(null);
+    if (isLoggedIn()) {
+      $('#login-btn').textContent = '★ LOGOUT';
+      $('#login-btn').classList.add('logged-in');
+      toast('ログイン完了');
+    } else {
+      console.warn('[OAuth] tokens stored but isLoggedIn()=false', State.oauth);
+      setLoading('ログイン判定エラー', 'token取得は成功したがisLoggedIn=false\nState.oauth=' + JSON.stringify(State.oauth));
+      setTimeout(() => setLoading(null), 8000);
+    }
     return true;
   } catch (e) {
-    console.error(e);
-    toast('Token 交換失敗: ' + e.message, true);
+    setLoading('Token 交換失敗', e.message + '\n\n(DevTools コンソールに詳細)');
+    setTimeout(() => setLoading(null), 8000);
+    console.error('[OAuth] exchangeCodeForToken failed', e);
     return false;
-  } finally {
-    setLoading(null);
   }
 }
 
@@ -1053,21 +1069,28 @@ async function tokenRequest(body) {
   } else {
     form = new URLSearchParams({ ...body, client_id: cid }).toString();
   }
+  console.log('[OAuth] tokenRequest, public=' + !cs + ' grant=' + body.grant_type);
   const res = await fetch(`${BUNGIE}/Platform/App/OAuth/Token/`, { method: 'POST', headers, body: form });
   const data = await res.json().catch(() => null);
+  console.log('[OAuth] response status=' + res.status, data);
   if (!res.ok || !data?.access_token) {
-    throw new Error(data?.error_description || data?.Message || `Token HTTP ${res.status}`);
+    throw new Error(data?.error_description || data?.error || data?.Message || `Token HTTP ${res.status}`);
   }
   const now = Date.now();
-  State.oauth = {
+  const expIn = data.expires_in || 3600;
+  const oauth = {
     access: data.access_token,
-    accessExp: now + (data.expires_in * 1000) - 60_000,
-    refresh: data.refresh_token,
-    refreshExp: now + (data.refresh_expires_in * 1000) - 60_000,
-    membershipId: data.membership_id,
+    accessExp: now + (expIn * 1000) - 60_000,
   };
+  if (data.refresh_token) {
+    oauth.refresh = data.refresh_token;
+    oauth.refreshExp = now + ((data.refresh_expires_in || 7776000) * 1000) - 60_000;
+  }
+  if (data.membership_id) oauth.membershipId = data.membership_id;
+  State.oauth = oauth;
   saveOauth();
-  return State.oauth;
+  console.log('[OAuth] stored. isLoggedIn=' + isLoggedIn() + ' hasRefresh=' + !!oauth.refresh);
+  return oauth;
 }
 async function getAccessToken() {
   if (!State.oauth) return null;
