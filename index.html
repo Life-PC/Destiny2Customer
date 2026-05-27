@@ -124,6 +124,33 @@ main { display: flex; flex: 1; min-height: 0; }
 .card .icon-wrap .mw-badge { background: #f0c14a; color: #1a1100; }
 .card .icon-wrap .cf-badge { background: #cf6b3a; color: #fff; right: 14px; }
 .card .icon-wrap .lk-badge { background: rgba(0,0,0,0.6); color: #fff; left: -2px; right: auto; font-size: 8px; }
+.char-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 4px 14px; margin-top: 10px; padding: 8px 10px;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 4px;
+}
+.char-stats .cs-row {
+  display: grid; grid-template-columns: 90px 1fr 32px; align-items: center; gap: 6px;
+  font-size: 11px;
+}
+.char-stats .cs-name { color: var(--muted); white-space: nowrap; }
+.char-stats .cs-bar { background: var(--bg); height: 8px; border-radius: 3px; overflow: hidden; border: 1px solid var(--line); }
+.char-stats .cs-fill { background: linear-gradient(90deg, var(--arc) 0%, var(--accent) 100%); height: 100%; transition: width 200ms; }
+.char-stats .cs-value { text-align: right; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.char-stats .cs-total {
+  grid-column: 1 / -1; padding-top: 4px; margin-top: 4px; border-top: 1px dashed var(--line);
+  display: flex; justify-content: space-between; font-size: 11px; color: var(--accent); font-weight: 700;
+}
+@media (max-width: 700px) {
+  .char-stats { grid-template-columns: 1fr; gap: 3px; }
+}
+.subclass-section { margin-top: 10px; }
+.subclass-section:first-child { margin-top: 0; }
+.subclass-section > .sc-section-title {
+  font-size: 10px; letter-spacing: 1.5px; color: var(--accent); font-weight: 800;
+  margin-bottom: 4px; padding-left: 2px;
+  border-bottom: 1px solid var(--line); padding-bottom: 3px;
+}
 .slot.masterwork { box-shadow: 0 0 0 2px #f0c14a, 0 0 8px rgba(240, 193, 74, 0.5); border-color: #f0c14a; }
 .slot.crafted { box-shadow: 0 0 0 2px #cf6b3a; border-color: #cf6b3a; }
 .slot .mw-badge, .slot .cf-badge {
@@ -726,6 +753,7 @@ aside.detail.show { display: block; }
       <div class="equip-row" id="equip-row">
         <h3>EQUIPPED</h3>
         <div class="equip-sections" id="equip-sections"></div>
+        <div class="char-stats" id="char-stats"></div>
       </div>
       <div class="loadouts-row" id="loadouts-row">
         <h3>
@@ -812,11 +840,14 @@ const STORE = 'cache';
 const PAGE_SIZE = 60;
 const LANG = 'ja';
 const SCHEMA_VERSION = 5; // bump when trimItem output changes — forces cache rebuild
-// Modern (2026) D2 armor stats: 体力 / 武器 / クラス
+// Modern (2026) D2 armor stats: 体力 / 近接 / グレネード / スーパースキル / クラス / 武器
 const ARMOR_STAT_HASHES = [
-  392767087,  // 体力 (Health)
-  2996146975, // 武器 (Weapons)
-  1943323491, // クラス (Class)
+  392767087,  // 体力 (Health) — was Resilience
+  4244567218, // 近接 (Melee) — was Strength
+  1735777505, // グレネード (Grenade) — was Discipline
+  144602215,  // スーパースキル (Super) — was Intellect
+  1943323491, // クラス (Class) — was Recovery
+  2996146975, // 武器 (Weapons) — was Mobility
 ];
 // Weapon stat priority order: 威力, 射程距離, 安定性, ハンドリング, リロード速度, マガジン, 反動方向,
 // 毎分発射数, 弾薬生成, ズーム, 照準補佐, ガード耐性, ガード効率, チャージ時間
@@ -1094,12 +1125,15 @@ async function tokenRequest(body) {
 }
 async function getAccessToken() {
   if (!State.oauth) return null;
-  if (Date.now() < State.oauth.accessExp) return State.oauth.access;
-  if (Date.now() < State.oauth.refreshExp) {
+  const now = Date.now();
+  if (State.oauth.accessExp && now < State.oauth.accessExp) return State.oauth.access;
+  if (State.oauth.refresh && State.oauth.refreshExp && now < State.oauth.refreshExp) {
     try { await refreshTokens(); return State.oauth.access; }
     catch (e) { console.error('Refresh failed', e); logout(); return null; }
   }
+  // Access expired AND no usable refresh — log out
   logout();
+  toast('セッション期限切れ — 再ログインしてください', true);
   return null;
 }
 
@@ -1574,10 +1608,72 @@ function renderGuardians() {
 function paintGuardians() {
   paintCharBar();
   paintEquipped();
+  paintCharStats();
   paintLoadouts();
   paintInventory();
   paintVault();
 }
+
+function paintCharStats() {
+  const wrap = $('#char-stats');
+  if (!wrap) return;
+  const items = State.profile?.characterEquipment?.data?.[State.charId]?.items || [];
+  const totals = {};
+  for (const it of items) {
+    const def = State.byHash.get(it.itemHash);
+    if (def?.it !== 2) continue; // armor only
+    const live = State.profile?.itemComponents?.stats?.data?.[it.itemInstanceId]?.stats;
+    if (live) {
+      for (const h of ARMOR_STAT_HASHES) {
+        if (live[h]?.value != null) totals[h] = (totals[h] || 0) + live[h].value;
+      }
+    } else if (def.st) {
+      for (const h of ARMOR_STAT_HASHES) {
+        if (def.st[h] != null) totals[h] = (totals[h] || 0) + def.st[h];
+      }
+    }
+  }
+  if (!Object.keys(totals).length) { wrap.innerHTML = ''; return; }
+  // Typical stat range is 0-200 per character (max ~200 with masterworks/mods)
+  const max = 200;
+  let sum = 0;
+  const rows = ARMOR_STAT_HASHES.map(h => {
+    const v = totals[h] || 0;
+    sum += v;
+    const name = State.statDefs.get(h)?.n || ('Stat ' + h);
+    const pct = Math.max(0, Math.min(100, (v / max) * 100));
+    return `<div class="cs-row" title="${escape(name)}">
+      <div class="cs-name">${escape(name)}</div>
+      <div class="cs-bar"><div class="cs-fill" style="width:${pct.toFixed(1)}%"></div></div>
+      <div class="cs-value">${v}</div>
+    </div>`;
+  });
+  rows.push(`<div class="cs-total"><span>合計</span><span>${sum}</span></div>`);
+  wrap.innerHTML = rows.join('');
+}
+
+// Subclass plug categorization based on itemTypeDisplayName
+function subclassCategory(plug) {
+  const t = plug.t || '';
+  if (/スーパースキル/.test(t)) return 'super';
+  if (/クラススキル/.test(t)) return 'class';
+  if (/移動スキル/.test(t)) return 'jump';
+  if (/グレネード/.test(t)) return 'grenade';
+  if (/近接/.test(t)) return 'melee';
+  if (/特性/.test(t)) return 'aspect';
+  if (/かけら/.test(t)) return 'fragment';
+  return 'other';
+}
+const SUBCLASS_SECTION_ORDER = [
+  { key: 'super',    label: 'SUPER (スーパー)' },
+  { key: 'class',    label: 'CLASS ABILITY (クラスアビリティ)' },
+  { key: 'jump',     label: 'MOVEMENT (移動)' },
+  { key: 'melee',    label: 'MELEE (メレー)' },
+  { key: 'grenade',  label: 'GRENADE (グレネード)' },
+  { key: 'aspect',   label: 'ASPECTS (特性)' },
+  { key: 'fragment', label: 'FRAGMENTS (かけら)' },
+  { key: 'other',    label: 'OTHER' },
+];
 
 function findItemByInstanceId(id) {
   if (!id) return null;
@@ -2167,12 +2263,24 @@ function renderLoadoutDetail() {
   const subclassItems = resolved.filter(x => x.def?.it === 16);
   const missing = resolved.filter(x => !x.def);
 
-  // Resolve subclass plug hashes (super, abilities, aspects, fragments) → full perkRow listing
+  // Resolve subclass plug hashes and group by category (Super/Abilities/Aspects/Fragments/etc)
   const renderSubclassPlugs = (x) => {
     const hashes = (x.it.plugItemHashes || []).filter(h => h && h !== 0);
     const plugs = hashes.map(h => State.plugs.get(h) || State.byHash.get(h)).filter(Boolean);
     if (!plugs.length) return '';
-    return `<div class="perks subclass-perks">${plugs.map(p => perkRow(p, false, true)).join('')}</div>`;
+    const groups = {};
+    for (const p of plugs) {
+      const cat = subclassCategory(p);
+      (groups[cat] = groups[cat] || []).push(p);
+    }
+    return SUBCLASS_SECTION_ORDER.map(s => {
+      const list = groups[s.key];
+      if (!list?.length) return '';
+      return `<div class="subclass-section">
+        <div class="sc-section-title">${escape(s.label)}</div>
+        <div class="perks">${list.map(p => perkRow(p, false, true)).join('')}</div>
+      </div>`;
+    }).join('');
   };
 
   const renderItem = (x) => {
