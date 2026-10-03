@@ -508,6 +508,32 @@ aside.detail.show { display: block; }
   opacity: 0.95;
 }
 
+/* ENHANCED PERKS */
+.perk-row.enhanced .perk-icon { border-color: #f0c14a; box-shadow: 0 0 0 1px #f0c14a, 0 0 6px rgba(240, 193, 74, 0.5); }
+.perk-row.enhanced .perk-name { color: #f0c14a; }
+.enh-chip {
+  display: inline-block; margin-left: 6px; padding: 1px 5px; border-radius: 2px;
+  font-size: 9px; font-weight: 800; letter-spacing: 1px; vertical-align: middle;
+  background: #f0c14a; color: #1a1100;
+}
+.enh-avail {
+  display: inline-block; margin-left: 6px; padding: 0 5px; border-radius: 2px;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px; vertical-align: middle;
+  border: 1px solid #f0c14a; color: #f0c14a; white-space: nowrap;
+}
+.enh-diff { color: #f0c14a; font-weight: 700; }
+.enh-stats { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.enh-stat {
+  font-size: 10px; padding: 0 5px; border-radius: 2px;
+  background: rgba(240, 193, 74, 0.12); border: 1px solid rgba(240, 193, 74, 0.5); color: #f0c14a;
+}
+.enh-legend { font-size: 10px; color: var(--muted); margin-bottom: 8px; line-height: 1.7; }
+.perk-pair > summary { display: block; list-style: none; cursor: pointer; }
+.perk-pair > summary::-webkit-details-marker { display: none; }
+.perk-pair[open] > summary .perk-row { background: rgba(240, 193, 74, 0.06); }
+.perk-row.sub { margin: 2px 0 4px 18px; border-left-color: #f0c14a; background: rgba(240, 193, 74, 0.06); }
+.perk-more > summary { font-size: 10px; color: var(--muted); letter-spacing: 1px; cursor: pointer; padding: 4px 2px; }
+
 /* TRANSFER MENU */
 .transfer-pop {
   position: absolute; background: var(--panel); border: 1px solid var(--accent);
@@ -826,6 +852,7 @@ aside.detail.show { display: block; }
 
 <div id="toast"></div>
 
+<script src="manifest-trim.js"></script>
 <script>
 /* ========= CONFIG / CONSTANTS ========= */
 const DEFAULT = {
@@ -839,7 +866,7 @@ const DB_NAME = 'd2armory';
 const STORE = 'cache';
 const PAGE_SIZE = 60;
 const LANG = 'ja';
-const SCHEMA_VERSION = 5; // bump when trimItem output changes — forces cache rebuild
+const collator = new Intl.Collator('ja'); // much faster than repeated localeCompare(..., 'ja')
 // Modern (2026) D2 armor stats: 体力 / 近接 / グレネード / スーパースキル / クラス / 武器
 const ARMOR_STAT_HASHES = [
   392767087,  // 体力 (Health) — was Resilience
@@ -1138,66 +1165,20 @@ async function getAccessToken() {
 }
 
 /* ========= MANIFEST ========= */
+// Fast path: prebuilt compact manifest served next to index.html
+// (data/manifest-ja.json, built by tools/build-manifest.js via GitHub Actions) — ~2.5MB gzip.
+// Fallback: download the raw Bungie tables (~200MB) and trim in the browser — very slow on mobile.
+const PREBUILT_DIR = 'data/';
+
 async function fetchManifestMeta() {
   return api('/Platform/Destiny2/Manifest/');
 }
 
-function trimItem(it) {
-  if (it.redacted || it.blacklisted) return null;
-  const dp = it.displayProperties;
-  if (!dp || !dp.name) return null;
-  const isPlug = it.itemType === 19;
-  const isMain = it.itemType === 2 || it.itemType === 3 || it.itemType === 16;
-  if (!isPlug && !isMain) return null;
-  if (!dp.icon) return null;
-  const t = { h: it.hash, n: dp.name, i: dp.icon, it: it.itemType };
-  if (dp.description) t.d = dp.description;
-  if (it.iconWatermark || it.iconWatermarkFeatured) t.w = it.iconWatermark || it.iconWatermarkFeatured;
-  if (it.itemTypeDisplayName) t.t = it.itemTypeDisplayName;
-  if (it.itemSubType) t.is = it.itemSubType;
-  if (it.classType != null) t.cl = it.classType;
-  if (it.defaultDamageType) t.dt = it.defaultDamageType;
-  if (it.inventory?.tierType) t.tt = it.inventory.tierType;
-  if (it.inventory?.tierTypeName) t.ttn = it.inventory.tierTypeName;
-  if (it.flavorText) t.fx = it.flavorText;
-  if (it.screenshot) t.s = it.screenshot;
-  if (it.inventory?.bucketTypeHash) t.bk = it.inventory.bucketTypeHash;
-  if (it.equippingBlock?.equipmentSlotTypeHash) t.eq = it.equippingBlock.equipmentSlotTypeHash;
-  if (it.equippingBlock?.ammoType) t.am = it.equippingBlock.ammoType; // 1=Primary 2=Special 3=Heavy
-  if (it.stats?.stats) {
-    const s = {};
-    for (const k in it.stats.stats) {
-      const v = it.stats.stats[k].value;
-      if (v != null && v !== 0) s[k] = v;
-    }
-    if (Object.keys(s).length) t.st = s;
-  }
-  if (isMain && it.sockets?.socketEntries) {
-    t.sk = it.sockets.socketEntries.map(se => {
-      const o = {};
-      if (se.singleInitialItemHash) o.s = se.singleInitialItemHash;
-      if (se.reusablePlugItems?.length) o.r = se.reusablePlugItems.map(p => p.plugItemHash);
-      if (se.randomizedPlugSetHash) o.rp = se.randomizedPlugSetHash;
-      if (se.socketTypeHash) o.st = se.socketTypeHash;
-      return o;
-    });
-    if (it.sockets.socketCategories) {
-      t.sc = it.sockets.socketCategories.map(c => ({ h: c.socketCategoryHash, i: c.socketIndexes }));
-    }
-  }
-  return t;
-}
-function trimPlugSet(ps) {
-  const r = ps.reusablePlugItems;
-  if (!r?.length) return null;
-  return r.map(p => p.plugItemHash);
-}
-
-async function downloadJson(path, onProgress) {
-  const res = await fetch(BUNGIE + path);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  if (!res.body) return res.json();
-  const total = +res.headers.get('content-length') || 0;
+// expectedBytes = uncompressed size (content-length is the gzip size, so it can't drive progress)
+async function downloadJson(url, onProgress, expectedBytes) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+  if (!res.body || !onProgress || !expectedBytes) return res.json();
   const reader = res.body.getReader();
   const chunks = [];
   let recv = 0;
@@ -1206,157 +1187,189 @@ async function downloadJson(path, onProgress) {
     if (done) break;
     chunks.push(value);
     recv += value.length;
-    if (total && onProgress) onProgress(recv / total);
+    onProgress(Math.min(1, recv / expectedBytes));
   }
   return JSON.parse(await new Blob(chunks).text());
 }
 
-async function loadManifest() {
-  // Force rebuild if schema changed
-  const cachedSchema = await dbGet('schema').catch(() => null);
-  if (cachedSchema !== SCHEMA_VERSION) {
-    setLoading('スキーマ更新 — キャッシュ初期化中…');
-    await dbClear();
+async function saveManifest(m) {
+  try {
+    await dbClear(); // drop old-format keys
+    await dbPut('manifest', m);
+  } catch (e) {
+    console.warn('Manifest cache save failed (will re-download next time)', e);
   }
-  const cachedVer = await dbGet('version').catch(() => null);
-  const cachedItems = await dbGet('items').catch(() => null);
-  const cachedPlugs = await dbGet('plugs').catch(() => null);
-  const cachedPlugSets = await dbGet('plugSets').catch(() => null);
-  const cachedStatDefs = await dbGet('statDefs').catch(() => null);
-  const cachedLoadoutDefs = await dbGet('loadoutDefs').catch(() => null);
+}
 
+async function fetchPrebuiltVersion() {
+  try {
+    const r = await fetch(PREBUILT_DIR + 'manifest-version.json', { cache: 'no-store' });
+    return r.ok ? await r.json() : null;
+  } catch (e) {
+    console.warn('Prebuilt manifest version check failed', e);
+    return null;
+  }
+}
+
+async function buildManifestFromBungie(meta) {
+  const cp = meta.jsonWorldComponentContentPaths[LANG];
+  const raw = {};
+  const tables = Object.entries(D2Trim.TABLES);
+  for (let i = 0; i < tables.length; i++) {
+    const [key, table] = tables[i];
+    setLoading(`[低速モード] ${table} をダウンロード中 (${i + 1}/${tables.length})`);
+    raw[key] = await downloadJson(BUNGIE + cp[table]);
+  }
+  setLoading('整形中...');
+  return D2Trim.buildCompact(meta.version, raw);
+}
+
+async function loadManifest() {
+  const SCHEMA = D2Trim.SCHEMA;
+  const cached = await dbGet('manifest').catch(() => null);
+  const cachedOk = !!cached && cached.schema === SCHEMA;
+
+  // 1) Prebuilt compact manifest (fast)
+  setLoading('マニフェスト確認中...');
+  const remote = await fetchPrebuiltVersion();
+  if (remote && remote.schema === SCHEMA && remote.lang === LANG) {
+    if (cachedOk && cached.version === remote.version) return installManifest(cached);
+    try {
+      const m = await downloadJson(
+        `${PREBUILT_DIR}manifest-${LANG}.json?v=${encodeURIComponent(remote.version)}`,
+        p => setLoading(`マニフェスト ダウンロード中 ${Math.round(p * 100)}%`),
+        remote.bytes,
+      );
+      if (m.schema !== SCHEMA) throw new Error('prebuilt schema mismatch');
+      setLoading('保存中...');
+      await saveManifest(m);
+      return installManifest(m);
+    } catch (e) {
+      console.warn('Prebuilt manifest download failed — falling back to Bungie', e);
+    }
+  }
+
+  // 2) Fallback: raw Bungie manifest (slow)
   let meta = null, metaErr = null;
   try { setLoading('マニフェスト情報を取得中...'); meta = await fetchManifestMeta(); }
   catch (e) { metaErr = e; console.warn('Manifest meta failed:', e); }
-
   if (meta) {
-    const ver = meta.version;
-    const itemPath = meta.jsonWorldComponentContentPaths[LANG].DestinyInventoryItemDefinition;
-    const plugSetPath = meta.jsonWorldComponentContentPaths[LANG].DestinyPlugSetDefinition;
-    if (cachedVer === ver && cachedItems && cachedPlugs && cachedPlugSets && cachedStatDefs && cachedLoadoutDefs) {
-      installManifest(ver, cachedItems, cachedPlugs, cachedPlugSets, cachedStatDefs, cachedLoadoutDefs);
-    } else {
-      const cp = meta.jsonWorldComponentContentPaths[LANG];
-      setLoading('アイテム定義をダウンロード中... (圧縮済 約8MB)');
-      const raw = await downloadJson(cp.DestinyInventoryItemDefinition, p => setLoading(`アイテム定義 ${Math.round(p*100)}%`));
-      setLoading('PlugSet をダウンロード中... (約2MB)');
-      const rawPS = await downloadJson(cp.DestinyPlugSetDefinition, p => setLoading(`PlugSet ${Math.round(p*100)}%`));
-      setLoading('Stat 定義ダウンロード中...');
-      const rawStats = await downloadJson(cp.DestinyStatDefinition);
-      setLoading('ロードアウト定義ダウンロード中...');
-      const [rawLdName, rawLdIcon, rawLdColor] = await Promise.all([
-        downloadJson(cp.DestinyLoadoutNameDefinition),
-        downloadJson(cp.DestinyLoadoutIconDefinition),
-        downloadJson(cp.DestinyLoadoutColorDefinition),
-      ]);
-      setLoading('整形中...');
-      const items = []; const plugs = {};
-      for (const k in raw) {
-        const t = trimItem(raw[k]);
-        if (!t) continue;
-        if (t.it === 19) plugs[t.h] = t; else items.push(t);
-      }
-      const plugSets = {};
-      for (const k in rawPS) {
-        const t = trimPlugSet(rawPS[k]);
-        if (t) plugSets[k] = t;
-      }
-      const statDefs = {};
-      for (const k in rawStats) {
-        const s = rawStats[k];
-        if (s.redacted || !s.displayProperties?.name) continue;
-        statDefs[k] = { n: s.displayProperties.name, d: s.displayProperties.description || '', idx: s.index || 0 };
-      }
-      const loadoutDefs = {
-        names: {}, icons: {}, colors: {},
-      };
-      for (const k in rawLdName) {
-        const n = rawLdName[k]?.name; if (n) loadoutDefs.names[k] = n;
-      }
-      for (const k in rawLdIcon) {
-        const p = rawLdIcon[k]?.iconImagePath; if (p) loadoutDefs.icons[k] = p;
-      }
-      for (const k in rawLdColor) {
-        const p = rawLdColor[k]?.colorImagePath; if (p) loadoutDefs.colors[k] = p;
-      }
-      setLoading('保存中...');
-      await dbPut('schema', SCHEMA_VERSION);
-      await dbPut('version', ver);
-      await dbPut('items', items);
-      await dbPut('plugs', plugs);
-      await dbPut('plugSets', plugSets);
-      await dbPut('statDefs', statDefs);
-      await dbPut('loadoutDefs', loadoutDefs);
-      installManifest(ver, items, plugs, plugSets, statDefs, loadoutDefs);
-    }
-  } else if (cachedItems && cachedPlugs && cachedPlugSets && cachedStatDefs && cachedLoadoutDefs) {
-    installManifest(cachedVer || '?', cachedItems, cachedPlugs, cachedPlugSets, cachedStatDefs, cachedLoadoutDefs);
-    console.warn('Using cached manifest');
-  } else {
-    throw metaErr || new Error('No cache and meta unavailable');
+    if (cachedOk && cached.version === meta.version) return installManifest(cached);
+    const m = await buildManifestFromBungie(meta);
+    setLoading('保存中...');
+    await saveManifest(m);
+    return installManifest(m);
   }
+  if (cachedOk) {
+    console.warn('Using cached manifest (offline)');
+    return installManifest(cached);
+  }
+  throw metaErr || new Error('No cache and manifest unavailable');
 }
-function installManifest(ver, items, plugs, plugSets, statDefs, loadoutDefs) {
-  State.version = ver;
-  State.items = items;
-  State.plugs = new Map(Object.entries(plugs).map(([k, v]) => [+k, v]));
-  State.plugSets = new Map(Object.entries(plugSets).map(([k, v]) => [+k, v]));
-  State.statDefs = new Map(Object.entries(statDefs || {}).map(([k, v]) => [+k, v]));
-  State.loadoutNames = new Map(Object.entries(loadoutDefs?.names || {}).map(([k, v]) => [+k, v]));
-  State.loadoutIcons = new Map(Object.entries(loadoutDefs?.icons || {}).map(([k, v]) => [+k, v]));
-  State.loadoutColors = new Map(Object.entries(loadoutDefs?.colors || {}).map(([k, v]) => [+k, v]));
+
+const toHashMap = o => new Map(Object.entries(o || {}).map(([k, v]) => [+k, v]));
+function installManifest(m) {
+  State.version = m.version;
+  State.items = m.items;
+  State.plugs = toHashMap(m.plugs);
+  State.plugSets = toHashMap(m.plugSets);
+  State.statDefs = toHashMap(m.statDefs);
+  State.loadoutNames = toHashMap(m.loadoutDefs?.names);
+  State.loadoutIcons = toHashMap(m.loadoutDefs?.icons);
+  State.loadoutColors = toHashMap(m.loadoutDefs?.colors);
   State.byHash = new Map();
-  for (const it of items) State.byHash.set(it.h, it);
+  for (const it of m.items) State.byHash.set(it.h, it);
   for (const [k, v] of State.plugs) State.byHash.set(k, v);
 }
 
 /* ========= PERKS ========= */
 // Weapon perk socket category hash (modern D2)
 const PERK_SOCKET_CATEGORIES = new Set([4241085061, 3956125808]); // weapon perks + intrinsic
-const COSMETIC_SOCKET_CATEGORY = 2048875504; // shader/ornament/tracker
-const ARMOR_TIER_CATEGORY = 4243480345; // armor mods
+
+// Candidate plugs for one socket of an item definition.
+// Trackers / empty placeholder sockets (plug.x) are excluded; duplicates removed.
+function socketCandidates(se) {
+  let hashes = null;
+  if (se.rp && State.plugSets.has(se.rp)) hashes = State.plugSets.get(se.rp);
+  else if (se.ps && State.plugSets.has(se.ps)) hashes = State.plugSets.get(se.ps);
+  else if (se.r) hashes = se.r;
+  else if (se.s) hashes = [se.s];
+  if (!hashes) return [];
+  const seen = new Set();
+  const out = [];
+  for (const h of hashes) {
+    if (seen.has(h)) continue;
+    seen.add(h);
+    const p = State.plugs.get(h);
+    if (p && !p.x) out.push(p);
+  }
+  return out;
+}
+
+// Pair each enhanced perk with its base perk (same name) → [{ base, enh }]
+function pairEnhanced(plugs) {
+  const rows = [];
+  const byName = new Map();
+  for (const p of plugs) {
+    if (p.en || byName.has(p.n)) continue;
+    const row = { base: p, enh: null };
+    byName.set(p.n, row);
+    rows.push(row);
+  }
+  for (const p of plugs) {
+    if (!p.en) continue;
+    const row = byName.get(p.n);
+    if (row && !row.enh) row.enh = p;
+    else rows.push({ base: null, enh: p });
+  }
+  return rows;
+}
+
+// Column title = most common plug type name (バレル / マガジン / 特性 ...)
+function columnLabel(plugs, idx) {
+  const counts = new Map();
+  for (const p of plugs) if (!p.en && p.t) counts.set(p.t, (counts.get(p.t) || 0) + 1);
+  let best = null, n = 0;
+  for (const [t, c] of counts) if (c > n) { best = t; n = c; }
+  return best || plugs[0]?.t || `Socket ${idx}`;
+}
 
 function getPerkColumnsForDbItem(item) {
-  // returns [{ socketIndex, kind: 'curated'|'random', plugs: [{hash, name, icon, desc}] }]
+  // returns [{ socketIndex, kind: 'curated'|'random', label, rows: [{ base, enh }] }]
   if (!item.sk) return [];
   const cats = item.sc || [];
   const isArmor = item.it === 2;
   const wantedIdx = new Set();
-  if (isArmor) {
-    // Armor: show ALL socket entries (shaders, mod slots, ornaments, etc.)
-    item.sk.forEach((_, idx) => wantedIdx.add(idx));
-  } else {
-    for (const c of cats) if (PERK_SOCKET_CATEGORIES.has(c.h)) c.i.forEach(i => wantedIdx.add(i));
-  }
+  for (const c of cats) if (PERK_SOCKET_CATEGORIES.has(c.h)) c.i.forEach(i => wantedIdx.add(i));
   const cols = [];
   item.sk.forEach((se, idx) => {
-    if (!wantedIdx.has(idx) && cats.length && !isArmor) return; // if categories exist, restrict (weapons only)
-    let plugs = [];
-    if (se.rp && State.plugSets.has(se.rp)) {
-      plugs = State.plugSets.get(se.rp).map(h => State.plugs.get(h)).filter(Boolean);
-    }
-    if (!plugs.length && se.r) {
-      plugs = se.r.map(h => State.plugs.get(h)).filter(Boolean);
-    }
-    if (!plugs.length && se.s) {
-      const p = State.plugs.get(se.s); if (p) plugs = [p];
-    }
-    if (plugs.length) cols.push({ socketIndex: idx, plugs, kind: se.rp ? 'random' : 'curated' });
+    // Weapons: perk/intrinsic sockets only. Armor: all sockets (mods etc.)
+    if (!isArmor && cats.length && !wantedIdx.has(idx)) return;
+    const plugs = socketCandidates(se);
+    if (!plugs.length) return;
+    cols.push({ socketIndex: idx, kind: se.rp ? 'random' : 'curated', label: columnLabel(plugs, idx), rows: pairEnhanced(plugs) });
   });
   return cols;
 }
 
-// For owned items: use itemComponents.sockets.data[instanceId].sockets[] = [{plugHash, isEnabled}]
-function getPerksForLiveItem(instanceId) {
+// For owned items: itemComponents.sockets.data[instanceId].sockets[] = [{plugHash, isEnabled, isVisible}]
+// Weapons → { main: perk/intrinsic sockets, other: mods/masterwork/shader... }
+function getPerksForLiveItem(instanceId, item) {
   const liveSockets = State.profile?.itemComponents?.sockets?.data?.[instanceId]?.sockets;
-  if (!liveSockets) return [];
-  return liveSockets.map((s, idx) => {
-    if (!s.plugHash) return null;
+  const main = [], other = [];
+  if (!liveSockets) return { main, other };
+  const perkIdx = new Set();
+  if (item?.it === 3) for (const c of item.sc || []) if (PERK_SOCKET_CATEGORIES.has(c.h)) c.i.forEach(i => perkIdx.add(i));
+  liveSockets.forEach((s, idx) => {
+    if (!s.plugHash || s.isVisible === false) return;
     const plug = State.plugs.get(s.plugHash);
-    if (!plug) return null;
-    return { socketIndex: idx, plug, enabled: !!s.isEnabled };
-  }).filter(Boolean);
+    if (!plug || plug.x) return;
+    const e = { socketIndex: idx, plug, enabled: !!s.isEnabled };
+    (!perkIdx.size || perkIdx.has(idx) ? main : other).push(e);
+  });
+  return { main, other };
 }
+
 
 /* ========= DESTINY API (high level) ========= */
 async function getMemberships() {
@@ -1482,7 +1495,7 @@ function populateCategorySelect() {
     const [it, name] = v.split('|');
     if (groups[it]) groups[it].push(name);
   }
-  for (const key in groups) groups[key].sort((a, b) => a.localeCompare(b, 'ja'));
+  for (const key in groups) groups[key].sort((a, b) => collator.compare(a, b));
   function addGroup(label, key, mark) {
     const o0 = document.createElement('option');
     o0.value = mark; o0.textContent = `── ${label} ──`;
@@ -1517,7 +1530,7 @@ function applyFilters() {
     if (cls !== '' && it.cl !== +cls) return false;
     return true;
   });
-  State.filtered.sort((a, b) => ((b.tt || 0) - (a.tt || 0)) || a.n.localeCompare(b.n, 'ja'));
+  // State.items is pre-sorted (tier desc → name) by D2Trim.buildCompact, filter keeps that order
   State.armoryPage = 0;
   renderArmoryPage();
 }
@@ -1886,14 +1899,14 @@ function renderWeaponSlot(slot, slotItems, opts) {
       if ((a.def.dt || 0) !== (b.def.dt || 0)) return (a.def.dt || 99) - (b.def.dt || 99);
       const tA = a.def.tt || 0, tB = b.def.tt || 0;
       if (tA !== tB) return tB - tA;
-      return a.def.n.localeCompare(b.def.n, 'ja');
+      return collator.compare(a.def.n, b.def.n);
     });
   }
   // sort type entries by ammo, then name
   const entries = Array.from(byType.entries()).sort((a, b) => {
     const ammoA = a[1][0].def.am || 99, ammoB = b[1][0].def.am || 99;
     if (ammoA !== ammoB) return ammoA - ammoB;
-    return a[0].localeCompare(b[0], 'ja');
+    return collator.compare(a[0], b[0]);
   });
   let lastAmmo = null;
   for (const [typeName, arr] of entries) {
@@ -1928,7 +1941,7 @@ function renderArmorSlot(slot, slotItems, opts) {
     byClass.get(c).push(x);
   }
   for (const arr of byClass.values()) {
-    arr.sort((a, b) => ((b.def.tt || 0) - (a.def.tt || 0)) || a.def.n.localeCompare(b.def.n, 'ja'));
+    arr.sort((a, b) => ((b.def.tt || 0) - (a.def.tt || 0)) || collator.compare(a.def.n, b.def.n));
   }
   // Order: 0=Titan, 1=Hunter, 2=Warlock, 3=Universal
   const entries = Array.from(byClass.entries()).sort((a, b) => a[0] - b[0]);
@@ -1973,7 +1986,7 @@ function renderGroupedGrid(containerId, items, opts = {}) {
         sec = renderArmorSlot(slot, slotItems, opts);
       } else {
         // Simple sort: tier desc, then name
-        slotItems.sort((a, b) => ((b.def.tt || 0) - (a.def.tt || 0)) || a.def.n.localeCompare(b.def.n, 'ja'));
+        slotItems.sort((a, b) => ((b.def.tt || 0) - (a.def.tt || 0)) || collator.compare(a.def.n, b.def.n));
         sec = document.createElement('div');
         sec.className = 'slot-section';
         const showSlotTitle = group.slots.length > 1;
@@ -2384,26 +2397,70 @@ function renderLoadoutDetail() {
 
 function renderPerks(item, instanceId) {
   if (instanceId) {
-    const live = getPerksForLiveItem(instanceId);
-    if (!live.length) return '';
-    return `<div class="perks"><div class="perk-col"><div class="perk-list">${live.map(p => perkRow(p.plug, true, p.enabled)).join('')}</div></div></div>`;
+    const { main, other } = getPerksForLiveItem(instanceId, item);
+    if (!main.length && !other.length) return '';
+    const list = arr => `<div class="perk-col"><div class="perk-list">${arr.map(p => perkRow(p.plug, true, p.enabled)).join('')}</div></div>`;
+    return `<div class="perks">
+      ${main.length ? list(main) : ''}
+      ${other.length ? `<details class="perk-more"><summary>MOD / マスターワーク / その他 (${other.length})</summary>${list(other)}</details>` : ''}
+    </div>`;
   }
   const cols = getPerkColumnsForDbItem(item);
   if (!cols.length) return '';
-  return `<div class="perks">${cols.map(col => `
+  const hasEnh = cols.some(c => c.rows.some(r => r.base && r.enh));
+  return `${hasEnh ? `<div class="enh-legend"><span class="enh-avail">▲ 強化版あり</span> のパークはタップで強化版の効果を表示(<span class="enh-diff">金色</span> = 強化で変わる部分)</div>` : ''}
+  <div class="perks">${cols.map(col => `
     <div class="perk-col">
-      <div class="col-title">Socket ${col.socketIndex} · ${col.kind === 'random' ? 'RANDOM ROLL' : 'CURATED'} · ${col.plugs.length} 候補</div>
-      <div class="perk-list">${col.plugs.map(p => perkRow(p, false, false)).join('')}</div>
+      <div class="col-title">${escape(col.label)} · ${col.kind === 'random' ? 'ランダム' : '固定'} · ${col.rows.length} 候補</div>
+      <div class="perk-list">${col.rows.map(perkPairRow).join('')}</div>
     </div>`).join('')}</div>`;
 }
-function perkRow(plug, equipped, enabled) {
+
+// Stat differences between the enhanced perk and its base perk (e.g. "ハンドリング +10")
+function enhancedStatChips(base, enh) {
+  const a = base?.ps || {}, b = enh.ps || {};
+  const chips = [];
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const d = (b[k] || 0) - (a[k] || 0);
+    const def = State.statDefs.get(+k);
+    if (!d || !def) continue;
+    chips.push(`<span class="enh-stat">${escape(def.n)} ${d > 0 ? '+' : ''}${d}</span>`);
+  }
+  return chips.join('');
+}
+// Enhanced description with lines that differ from the base perk highlighted
+function enhancedDescHtml(base, enh) {
+  if (!enh.d) return '';
+  const baseLines = new Set((base?.d || '').split('\n').map(s => s.trim()));
+  return enh.d.split('\n').map(line => {
+    const changed = base && line.trim() && !baseLines.has(line.trim());
+    return changed ? `<span class="enh-diff">${escape(line)}</span>` : escape(line);
+  }).join('\n');
+}
+function perkPairRow({ base, enh }) {
+  if (!base || !enh) return perkRow(base || enh, false, null);
+  const chips = enhancedStatChips(base, enh);
+  return `<details class="perk-pair">
+    <summary>${perkRow(base, false, null, true)}</summary>
+    <div class="perk-row enhanced sub">
+      <div class="perk-icon"><img loading="lazy" src="${BUNGIE}${enh.i}" alt=""></div>
+      <div class="perk-body">
+        <div class="perk-name">${escape(enh.n)}<span class="enh-chip">強化版</span></div>
+        ${chips ? `<div class="enh-stats">${chips}</div>` : ''}
+        ${enh.d ? `<div class="perk-desc">${enhancedDescHtml(base, enh)}</div>` : ''}
+      </div>
+    </div>
+  </details>`;
+}
+function perkRow(plug, equipped, enabled, hasEnhanced) {
   const classes = ['perk-row'];
   if (equipped) classes.push('equipped');
   if (enabled === false) classes.push('disabled');
+  if (plug.en) classes.push('enhanced');
   return `<div class="${classes.join(' ')}">
-    <div class="perk-icon"><img src="${BUNGIE}${plug.i}" alt=""></div>
+    <div class="perk-icon"><img loading="lazy" src="${BUNGIE}${plug.i}" alt=""></div>
     <div class="perk-body">
-      <div class="perk-name">${escape(plug.n)}</div>
+      <div class="perk-name">${escape(plug.n)}${plug.en ? '<span class="enh-chip">強化版</span>' : ''}${hasEnhanced ? '<span class="enh-avail">▲ 強化版あり</span>' : ''}</div>
       ${plug.d ? `<div class="perk-desc">${escape(plug.d)}</div>` : ''}
     </div>
   </div>`;
