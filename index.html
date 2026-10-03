@@ -1367,8 +1367,10 @@ function getPerkColumnsForDbItem(item) {
     if (!isArmor && cats.length && !wantedIdx.has(idx)) return;
     const plugs = socketCandidates(se);
     if (!plugs.length) return;
-    cols.push({ socketIndex: idx, kind: se.rp ? 'random' : 'curated', label: columnLabel(plugs, idx), rows: pairEnhanced(plugs) });
+    cols.push({ socketIndex: idx, kind: se.rp || se.rr ? 'random' : 'curated', label: columnLabel(plugs, idx), rows: pairEnhanced(plugs) });
   });
+  // Armor: random-roll perks (e.g. exotic class item 精神) first, before the long mod lists
+  if (isArmor) cols.sort((a, b) => (b.kind === 'random') - (a.kind === 'random'));
   return cols;
 }
 

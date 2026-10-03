@@ -4,7 +4,7 @@
  * Output format = "compact manifest" consumed by installManifest() in index.html.
  */
 (function (root) {
-  const SCHEMA = 8; // bump when output format changes (forces browser cache rebuild)
+  const SCHEMA = 9; // bump when output format changes (forces browser cache rebuild)
 
   // Plug category for weapon "frames" (perk columns). Enhanced perks = Frames + tierType 3 (Common)
   const PLUG_CAT_FRAMES = 7906839;
@@ -81,6 +81,36 @@
     return rollable.length ? rollable : uniq(r.map(p => p.plugItemHash));
   }
 
+  /* Perk pools that the API does not expose.
+   * Exotic class items (独我論 / ストイシズム / 相対主義) have two random "精神" (Spirit) perk
+   * sockets, but the manifest only lists the default plug — no plug set. Pools taken
+   * from light.gg (2026-10). Each socket whose default plug is in a column gets that column.
+   * itemHash → [column1 plug hashes, column2 plug hashes] */
+  const SHARED_SPIRITS_1 = [1476923952, 1476923953, 1476923954]; // 暗殺者 / 深部の光 / 蛇
+  const SHARED_SPIRITS_2 = [1476923955, 1476923956, 1476923957]; // 星喰らい / シンソセプス / ベリティ
+  const EXTRA_RANDOM_PERKS = {
+    2273643087: [ // 独我論 (Warlock)
+      [183430248, 183430250, 183430252, 183430253, 183430255, ...SHARED_SPIRITS_1],
+      [183430246, 183430247, 183430249, 183430251, 183430254, ...SHARED_SPIRITS_2],
+    ],
+    266021826: [ // ストイシズム (Titan)
+      [3573490505, 3573490508, 3573490509, 3573490510, 3573490511, ...SHARED_SPIRITS_1],
+      [3573490500, 3573490501, 3573490504, 3573490506, 3573490507, ...SHARED_SPIRITS_2],
+    ],
+    2809120022: [ // 相対主義 (Hunter)
+      [3751917995, 3751917996, 3751917997, 3751917998, 3751917999, ...SHARED_SPIRITS_1],
+      [3751917990, 3751917991, 3751917992, 3751917993, 3751917994, ...SHARED_SPIRITS_2],
+    ],
+  };
+  function applyExtraRandomPerks(item) {
+    const cols = EXTRA_RANDOM_PERKS[item.h];
+    if (!cols || !item.sk) return;
+    for (const se of item.sk) {
+      const col = cols.find(c => c.includes(se.s));
+      if (col) { se.r = col; se.rr = 1; } // rr = random roll pool from EXTRA_RANDOM_PERKS
+    }
+  }
+
   /* raw = { items, plugSets, stats, socketTypes, ldName, ldIcon, ldColor } (Bungie world component tables) */
   function buildCompact(version, raw) {
     const items = [];
@@ -88,7 +118,8 @@
     for (const k in raw.items) {
       const t = trimItem(raw.items[k]);
       if (!t) continue;
-      if (t.it === 19) allPlugs[t.h] = t; else items.push(t);
+      if (t.it === 19) allPlugs[t.h] = t;
+      else { applyExtraRandomPerks(t); items.push(t); }
     }
     const plugSets = {};
     for (const k in raw.plugSets) {
