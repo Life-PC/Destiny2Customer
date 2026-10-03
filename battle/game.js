@@ -159,15 +159,20 @@
     return opts[opts.length - 1];
   }
   // Random job: class -> subclass -> one random option per ability kind (Mobius-style job card)
+  /* Job = random combination of SUBCLASS + MELEE + GRENADE + CLASS ABILITY + SUPER
+   * (Mobius-style job card). Abilities are picked from the rolled subclass, as in D2.
+   * Movement is the subclass default. The name is fixed per combination. */
   function rollJob(cls = rand(3), rarity = rollRarity()) {
     const sub = pick(Data.subclasses.filter(s => s.cl === cls));
     const ab = subclassAbilities(sub);
-    const j = { id: 'j' + (S.nextId++), cl: cls, sub: sub.h, r: rarity, lv: 1, xp: 0 };
-    for (const k of ABIL_KINDS) j[k.k] = ab[k.k]?.length ? pick(ab[k.k]).h : 0;
-    j.name = Content.suggestJobName(cls, subElement(sub), sub.h + j.sup + j.gre);
+    const any = k => (ab[k]?.length ? pick(ab[k]) : null);
+    const sup = any('sup'), cs = any('cls'), mel = any('mel'), gre = any('gre');
+    const j = { id: 'j' + (S.nextId++), cl: cls, sub: sub.h, r: rarity, lv: 1, xp: 0,
+      sup: sup?.h || 0, cls: cs?.h || 0, mel: mel?.h || 0, gre: gre?.h || 0, mov: ab.mov?.[0]?.h || 0 };
+    j.name = Content.jobNameFor(cls, subElement(sub), sub, [sup, cs, mel, gre]);
     return j;
   }
-  const jobKey = j => [j.cl, j.sub, ...ABIL_KINDS.map(k => j[k.k])].join(':');
+  const jobKey = j => [j.cl, j.sub, j.sup, j.cls, j.mel, j.gre].join(':');
   // Adds a pulled job; a duplicate combination turns into EXP for the existing job
   function grantJob(j) {
     const dup = S.jobs.find(x => jobKey(x) === jobKey(j));
@@ -587,6 +592,14 @@
 
   /* ----- jobs (obtained from the job engram; not freely creatable) ----- */
   const stars = r => '★'.repeat(r || 3);
+  // Icons of the job's combination: super / class / melee / grenade
+  function jobComboLine(j) {
+    return `<div class="abil" style="margin-top:3px">${['sup', 'cls', 'mel', 'gre'].map(k => {
+      const p = Data.plugs.get(j[k]);
+      const kind = ABIL_KINDS.find(x => x.k === k);
+      return p ? `<img src="${img(p.i)}" title="${esc(kind.n + ': ' + p.n)}">` : '';
+    }).join('')}</div>`;
+  }
   function renderJobs(body) {
     body.appendChild(el(`<h2 class="sec">ジョブ一覧(${S.jobs.length})</h2>`));
     const sorted = [...S.jobs].sort((a, b) => (b.id === S.activeJob) - (a.id === S.activeJob) || (b.r || 3) - (a.r || 3) || b.lv - a.lv);
@@ -598,7 +611,7 @@
         <div class="grow">
           <div><span class="stars r${j.r || 3}">${stars(j.r)}</span> <span style="color:var(--${e})">${esc(j.name)}</span> <span class="muted" style="font-size:11px">Lv.${j.lv}/${jobMaxLv(j)}</span></div>
           <div class="muted" style="font-size:11px">${CLASS_NAME[j.cl]} / ${esc(sub?.n || '?')}</div>
-          <div class="abil">${ABIL_KINDS.map(k => { const p = Data.plugs.get(j[k.k]); return p ? `<img src="${img(p.i)}" title="${esc(k.n + ': ' + p.n)}">` : ''; }).join('')}</div>
+          ${jobComboLine(j)}
         </div>
         <div class="row" style="flex-direction:column;gap:4px">
           ${j.id === S.activeJob ? '<span class="muted" style="font-size:11px">使用中</span>' : '<button class="pbtn small use">使用</button>'}
@@ -612,28 +625,31 @@
     const nb = el(`<button class="pbtn primary" style="width:100%;margin-top:6px">◆ エングラムでジョブを召喚</button>`);
     nb.onclick = () => renderHub('engram');
     body.appendChild(nb);
-    body.appendChild(el(`<p class="muted" style="font-size:11px;line-height:1.6">ジョブはグリマーを使った「ジョブ・エングラム」で手に入ります。サブクラス・スーパー・クラスアビリティ・移動スキル・近接・グレネードの組み合わせはランダム。★が高いほど基礎能力とレベル上限が上がります。同じジョブが出たら経験値に変換されます。</p>`));
+    body.appendChild(el(`<p class="muted" style="font-size:11px;line-height:1.6">ジョブはグリマーを使った「ジョブ・エングラム」で手に入ります。ジョブ = サブクラス・近接・グレネード・クラススキル・スーパーのランダムな組み合わせ(名前は組み合わせごとに固定)。★が高いほど基礎能力とレベル上限が上がり、同じジョブが出たら経験値に変換されます。</p>`));
   }
 
+  function abilityRow(job, k) {
+    const p = Data.plugs.get(job[k]);
+    const kind = ABIL_KINDS.find(x => x.k === k);
+    return p ? `<div class="opt" style="cursor:default;margin-bottom:4px"><img src="${img(p.i)}"><div><div>${kind.n}: ${esc(p.n)}</div><div class="d" style="-webkit-line-clamp:4">${esc(p.d || '')}</div></div></div>` : '';
+  }
   function openJobDetail(job) {
     const sub = Data.byHash.get(job.sub);
     const e = subElement(sub);
     const m = el(`<div class="modal"><div class="panel">
-      <div class="row"><b style="color:var(--accent)">ジョブ詳細</b><span class="grow"></span><button class="pbtn small x">✕</button></div>
+      <div class="row"><b style="color:var(--accent)">${esc(job.name)}</b><span class="grow"></span><button class="pbtn small x">✕</button></div>
       <div class="row" style="margin:8px 0"><div class="sp"></div><div class="grow">
         <div><span class="stars r${job.r || 3}">${stars(job.r)}</span> Lv.${job.lv}/${jobMaxLv(job)} <span class="muted" style="font-size:11px">EXP ${job.xp || 0}/${job.lv * 100}</span></div>
         <div class="muted" style="font-size:12px">${CLASS_NAME[job.cl]} / ${esc(sub?.n || '?')}(${ELEMENT_NAME[e]})· 能力倍率 ×${RARITY[job.r || 3].mult}</div>
       </div></div>
-      <h2 class="sec">ジョブ名</h2>
-      <div class="row"><input class="txt grow nm" maxlength="16" value="${esc(job.name)}"><button class="pbtn small sug">名前を提案</button><button class="pbtn small primary ok">変更</button></div>
-      <h2 class="sec">アビリティ</h2>
-      ${ABIL_KINDS.map(k => { const p = Data.plugs.get(job[k.k]); return p ? `<div class="opt" style="cursor:default;margin-bottom:4px"><img src="${img(p.i)}"><div><div>${k.n}: ${esc(p.n)}</div><div class="d" style="-webkit-line-clamp:4">${esc(p.d || '')}</div></div></div>` : ''; }).join('')}
+      <h2 class="sec">ジョブ構成</h2>
+      ${['sup', 'cls', 'mel', 'gre'].map(k => abilityRow(job, k)).join('')}
+      <h2 class="sec">サブクラス標準</h2>
+      ${abilityRow(job, 'mov')}
       ${S.jobs.length > 1 ? `<div class="row" style="margin-top:10px"><span class="grow"></span><button class="pbtn small del" style="border-color:var(--bad)">ジョブを解放(+${RARITY[job.r || 3].refund} グリマー)</button></div>` : ''}
     </div></div>`);
     m.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(job.cl, e), 3));
     m.querySelector('.x').onclick = () => m.remove();
-    m.querySelector('.sug').onclick = () => { m.querySelector('.nm').value = Content.suggestJobName(job.cl, e, rand(1e6)); };
-    m.querySelector('.ok').onclick = () => { job.name = m.querySelector('.nm').value.trim() || job.name; save(); m.remove(); renderHub('job'); };
     m.querySelector('.del')?.addEventListener('click', () => {
       if (!confirm(`ジョブ「${job.name}」を解放しますか?`)) return;
       S.jobs = S.jobs.filter(x => x !== job);
@@ -731,7 +747,7 @@
     const d = el(`<div class="panel engram">
       <div class="ec"></div>
       <div style="margin:6px 0">ジョブ・エングラム召喚</div>
-      <div class="muted" style="font-size:12px;line-height:1.6">サブクラスとアビリティの組み合わせがランダムなジョブを召喚。<br>★5: 10% / ★4: 30% / ★3: 60% · 10回召喚は★4以上を1つ確定</div>
+      <div class="muted" style="font-size:12px;line-height:1.6">サブクラス・近接・グレネード・クラススキル・スーパーの組み合わせがランダムなジョブを召喚。<br>★5: 10% / ★4: 30% / ★3: 60% · 10回召喚は★4以上を1つ確定</div>
       <div class="row" style="justify-content:center;margin-top:10px">
         <button class="pbtn j1">1回 (${JOB_ENGRAM_COST})</button>
         <button class="pbtn primary j10">10回 (${JOB_ENGRAM_COST * 9})</button>
@@ -754,7 +770,7 @@
           <div class="sp"></div><div class="grow">
             <div><span class="stars r${r}">${stars(r)}</span> <span style="color:var(--${e})">${esc(j.name)}</span> ${g.dup ? `<span class="muted" style="font-size:11px">重複 → EXP+${g.xp}</span>` : '<span style="color:var(--good);font-size:11px">NEW</span>'}</div>
             <div class="muted" style="font-size:11px">${CLASS_NAME[j.cl]} / ${esc(sub?.n || '?')}</div>
-            <div class="abil">${ABIL_KINDS.map(k => { const p = Data.plugs.get(j[k.k]); return p ? `<img src="${img(p.i)}" title="${esc(k.n + ': ' + p.n)}">` : ''; }).join('')}</div>
+            ${jobComboLine(j)}
           </div></div>`);
         row.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(j.cl, e), 2));
         res.appendChild(row);

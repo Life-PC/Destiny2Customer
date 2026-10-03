@@ -250,9 +250,27 @@
     const s = Math.abs(seed | 0);
     return `${p[s % p.length]}の${n[(s >> 3) % n.length]}`;
   }
+  // Job name fixed per combination: element prefix (subclass) + noun chosen by the class ability,
+  // varied by a hash of the whole combination
+  const CLASS_SKILL_NOUN = [
+    [/バリケード/, ['城塞騎士', '盾守護者', '防壁兵']],
+    [/スラスター/, ['強襲兵', '突撃騎士']],
+    [/リフト/, ['結界術士', '陣術士', '泉賢者']],
+    [/フェニックス|ダイブ/, ['不死鳥術士', '翔天士']],
+    [/回避|ドッジ|ステップ/, ['影踏み', '疾風狩人', '舞刃士']],
+  ];
+  function hashStr(str) { let h = 0; for (const ch of str) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); }
+  function jobNameFor(cls, element, sub, plugs) {
+    const [sup, cs] = plugs;
+    const seed = hashStr([sub?.n, ...plugs.map(p => p?.n)].join('|'));
+    const p = ELEMENT_PREFIX[element] || ELEMENT_PREFIX.kin;
+    const row = CLASS_SKILL_NOUN.find(([re]) => re.test(cs?.n || ''));
+    const nouns = row ? row[1] : (CLASS_NOUN[cls] || CLASS_NOUN[0]);
+    return `${p[seed % p.length]}の${nouns[(seed >> 4) % nouns.length]}`;
+  }
 
   root.Content = {
     DT_ELEMENT, ELEMENT_NAME, CLASS_NAME, ENEMIES, BOSSES, enemyDef, STAGES, PROLOGUE, STORY,
-    SET_EFFECTS, setEffectFor, suggestJobName,
+    SET_EFFECTS, setEffectFor, suggestJobName, jobNameFor,
   };
 })(window);
