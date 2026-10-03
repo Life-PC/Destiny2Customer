@@ -969,13 +969,18 @@ function clientSecret() { return cfg('CLIENT_SECRET'); }
 function redirect()     { return cfg('REDIRECT'); }
 
 /* ========= INDEXED DB ========= */
+// Single shared connection. Opening a new connection per call left them all open,
+// which blocked deleteDatabase() (dbClear) for tens of seconds.
+let _dbConn = null;
 function dbOpen() {
-  return new Promise((resolve, reject) => {
+  if (_dbConn) return _dbConn;
+  _dbConn = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE, { keyPath: 'key' });
     req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onerror = () => { _dbConn = null; reject(req.error); };
   });
+  return _dbConn;
 }
 async function dbGet(key) {
   const db = await dbOpen();
@@ -995,8 +1000,24 @@ async function dbPut(key, value) {
     tx.onerror = () => reject(tx.error);
   });
 }
+// Replace the whole store contents with a single key (one transaction, no DB deletion)
+async function dbReplaceAll(key, value) {
+  const db = await dbOpen();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    const store = tx.objectStore(STORE);
+    store.clear();
+    store.put({ key, value });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
 async function dbClear() {
-  try { const db = await dbOpen(); db.close(); } catch {}
+  if (_dbConn) {
+    try { (await _dbConn).close(); } catch {}
+    _dbConn = null;
+  }
   await new Promise((r) => {
     const req = indexedDB.deleteDatabase(DB_NAME);
     req.onsuccess = r; req.onerror = r; req.onblocked = r;
@@ -1194,8 +1215,7 @@ async function downloadJson(url, onProgress, expectedBytes) {
 
 async function saveManifest(m) {
   try {
-    await dbClear(); // drop old-format keys
-    await dbPut('manifest', m);
+    await dbReplaceAll('manifest', m); // also drops old-format keys
   } catch (e) {
     console.warn('Manifest cache save failed (will re-download next time)', e);
   }
