@@ -85,7 +85,7 @@
     return m;
   }
 
-  const Data = { byHash: new Map(), plugs: new Map(), plugSets: new Map(), sets: {}, acts: new Map(), pool: {}, subclasses: [], glimmerIcon: '' };
+  const Data = { byHash: new Map(), plugs: new Map(), plugSets: new Map(), sets: {}, acts: new Map(), pool: {}, subclasses: [], glimmerIcon: '', ghosts: [], ghostByHash: new Map() };
   function indexManifest(m) {
     Data.byHash = new Map(m.items.map(i => [i.h, i]));
     Data.plugs = new Map(Object.entries(m.plugs).map(([k, v]) => [+k, v]));
@@ -104,6 +104,8 @@
       (Data.pool[slot] ||= []).push(it);
     }
     Data.subclasses = m.items.filter(i => i.it === 16 && i.cl >= 0 && i.cl <= 2 && (i.sk || []).length >= 5);
+    Data.ghosts = m.ghosts || [];
+    Data.ghostByHash = new Map(Data.ghosts.map(gh => [gh.h, gh]));
   }
   function activityFor(name) {
     if (!name) return null;
@@ -212,6 +214,8 @@
       if (it) { const inv = addItem(it, 'start'); equipWeapon(slot, inv.id); }
     }
     // Starter armor: one full legendary armor series per class (jobs of any class can be pulled)
+    const starterGhost = pick(Data.ghosts.filter(gh => gh.tt === 5)) || Data.ghosts[0];
+    if (starterGhost) S.ghost = addItem(starterGhost, 'start').id;
     for (const c of [0, 1, 2]) {
       for (const piece of starterArmorSet(c)) {
         const inv = addItem(piece, 'start');
@@ -303,14 +307,19 @@
     const lv = job.lv || 1;
     const sub = Data.byHash.get(job.sub);
     const element = subElement(sub);
+    const ghostInv = invById(S.ghost);
+    const ghost = ghostInv ? Data.ghostByHash.get(ghostInv.h) : null;
+    const gp = new Set(ghost ? Content.ghostPerksFor(ghost.h, ghost.tt).map(x => x.id) : []);
     const p = {
-      cls, job, items, stats, set, fx, lv, sub, element,
-      maxHp: Math.round((1000 + stats.hp * 8 + lv * 30) * RARITY[job.r || 3].mult + (fx === 'hp' ? 100 : 0)),
+      cls, job, items, stats, set, fx, lv, sub, element, ghost, gp,
+      maxHp: Math.round((1000 + stats.hp * 8 + lv * 30) * RARITY[job.r || 3].mult * (gp.has('hp') ? 1.08 : 1) + (fx === 'hp' ? 100 : 0)),
       atk: Math.round((100 + lv * 6) * RARITY[job.r || 3].mult),
       dr: Math.min(0.3, stats.hp / 400) + (fx === 'dr' ? 0.1 : 0),
-      crit: 0.08 + (fx === 'crit' ? 0.1 : 0),
+      crit: 0.08 + (fx === 'crit' ? 0.1 : 0) + (gp.has('crit') ? 0.05 : 0),
       evade: job.mov ? 0.06 : 0,
-      superRate: 1 + stats.super / 100,
+      superRate: (1 + stats.super / 100) * (gp.has('super') ? 1.15 : 1),
+      healMult: (fx === 'heal' ? 1.3 : 1) * (gp.has('heal') ? 1.25 : 1),
+      brkMult: (fx === 'brk' ? 1.25 : 1) * (gp.has('brk') ? 1.1 : 1),
       orbs: [], superG: fx === 'super' ? 30 : 0, buffs: {},
       abil: {},
     };
@@ -319,34 +328,62 @@
     return p;
   }
   function weaponImpact(def) { return def?.st?.[W_IMPACT] || 60; }
+  /* Firing pattern from the weapon's intrinsic frame description
+   * (e.g. パルスライフル「アグレッシブバースト」:「4点バースト」→ 4 shots per attack). */
+  const INTRINSIC_CAT = 3956125808;
+  function weaponFire(def) {
+    if (!def) return { shots: 1, mode: 'single', frame: null };
+    let frame = null;
+    for (const c of def.sc || []) {
+      if (c.h !== INTRINSIC_CAT) continue;
+      const se = def.sk?.[c.i[0]];
+      frame = Data.plugs.get(se?.s || se?.r?.[0]) || null;
+    }
+    const text = `${frame?.n || ''} ${frame?.d || ''}`;
+    const t = def.is;
+    const m = text.match(/([0-9０-９]+)\s*点バースト/) || text.match(/([0-9０-９]+)\s*連射/);
+    let shots = 1, mode = 'single';
+    if (m) { shots = Math.min(6, +m[1].replace(/[０-９]/g, d => '０１２３４５６７８９'.indexOf(d))); mode = 'burst'; }
+    else if (/ダブルファイア|2連/.test(text)) { shots = 2; mode = 'burst'; }
+    else if ([6, 8, 24].includes(t)) { shots = 5; mode = 'auto'; }
+    else if (t === 13) { shots = 3; mode = 'burst'; }
+    else if (t === 25) { shots = 6; mode = 'beam'; }
+    else if (t === 7) mode = 'spread';
+    else if (t === 11 || t === 22) { shots = t === 11 ? 5 : 3; mode = 'charge'; }
+    else if (t === 31) mode = 'arrow';
+    else if (t === 18 || t === 33) mode = 'blade';
+    else if (t === 10 || t === 23) mode = 'explosive';
+    return { shots, mode, frame };
+  }
   function buildCards(p) {
-    const cards = [];
+    const C = {};
     const costEl = e => (e === 'prism' ? 'any' : e);
     const { gre, mel, cls } = p.abil;
-    if (gre) {
-      const e = plugElement(gre, p.element);
-      cards.push({ id: 'gre', name: gre.n, icon: gre.i, el: e, cost: { [costEl(e)]: 3 }, kind: 'atk', aoe: true, mult: 1.5 * (1 + p.stats.grenade / 100), brk: 14 });
-    }
-    if (mel) {
-      const e = plugElement(mel, p.element);
-      cards.push({ id: 'mel', name: mel.n, icon: mel.i, el: e, cost: { [costEl(e)]: 2 }, kind: 'atk', mult: 2.6 * (1 + p.stats.melee / 100), brk: 22 });
-    }
-    if (cls) cards.push({ id: 'cls', name: cls.n, icon: cls.i, cost: { light: 2 }, kind: 'class' });
+    const kin = p.items.kin?.def;
+    C.kin = { id: 'kin', name: kin?.n || '素手', icon: kin?.i, cost: {}, kind: 'normal', el: DT_ELEMENT[kin?.dt] || 'kin', fire: weaponFire(kin) };
     const ene = p.items.ene?.def;
     if (ene) {
       const e = DT_ELEMENT[ene.dt] || 'kin';
       const special = ene.am === 2;
-      cards.push({ id: 'ene', name: ene.n, icon: ene.i, el: e, cost: { [e]: special ? 3 : 2 }, kind: 'atk',
-        mult: (special ? 2.8 : 1.6) * (0.6 + weaponImpact(ene) / 100) * (1 + p.stats.weapons / 150), brk: special ? 18 : 12 });
+      C.ene = { id: 'ene', name: ene.n, icon: ene.i, el: e, cost: { [e]: special ? 3 : 2 }, kind: 'atk', fire: weaponFire(ene),
+        mult: (special ? 2.8 : 1.6) * (0.6 + weaponImpact(ene) / 100) * (1 + p.stats.weapons / 150), brk: special ? 18 : 12 };
     }
     const pow = p.items.pow?.def;
     if (pow) {
       const e = DT_ELEMENT[pow.dt] || 'kin';
-      cards.push({ id: 'pow', name: pow.n, icon: pow.i, el: e, cost: { any: 5 }, kind: 'atk',
-        mult: 4.2 * (0.6 + weaponImpact(pow) / 120) * (1 + p.stats.weapons / 150), brk: 30 });
+      C.pow = { id: 'pow', name: pow.n, icon: pow.i, el: e, cost: { any: 5 }, kind: 'atk', fire: weaponFire(pow),
+        mult: 4.2 * (0.6 + weaponImpact(pow) / 120) * (1 + p.stats.weapons / 150), brk: 30 };
     }
-    cards.push({ id: 'heal', name: 'ゴースト・リバイブ', icon: null, cost: { light: 3 }, kind: 'heal' });
-    return cards;
+    if (mel) {
+      const e = plugElement(mel, p.element);
+      C.mel = { id: 'mel', name: mel.n, icon: mel.i, el: e, cost: { [costEl(e)]: 2 }, kind: 'atk', mult: 2.6 * (1 + p.stats.melee / 100), brk: 22 };
+    }
+    if (gre) {
+      const e = plugElement(gre, p.element);
+      C.gre = { id: 'gre', name: gre.n, icon: gre.i, el: e, cost: { [costEl(e)]: 3 }, kind: 'atk', aoe: true, mult: 1.5 * (1 + p.stats.grenade / 100), brk: 14 };
+    }
+    if (cls) C.cls = { id: 'cls', name: cls.n, icon: cls.i, cost: { light: 2 }, kind: 'class' };
+    return C;
   }
 
   /* ===================== D2 import (uses ARMORY login) ===================== */
@@ -669,6 +706,14 @@
     const set = setStatus(items, cls);
     body.appendChild(el(`<h2 class="sec">${CLASS_NAME[cls]} の装備</h2>`));
     const grid = el(`<div class="slots"></div>`);
+    const ginv = invById(S.ghost), gdef = ginv && Data.ghostByHash.get(ginv.h);
+    const gd = el(`<div class="slot">
+      ${gdef ? `<img src="${img(gdef.i)}">` : '<div style="width:44px;height:44px;border:2px dashed var(--line)"></div>'}
+      <div class="grow"><div class="lbl">ゴースト · 全クラス共通</div>
+      <div class="nm t${gdef?.tt || 0}">${gdef ? esc(gdef.n) : '(なし)'}</div>
+      ${gdef ? `<div class="lbl">${Content.ghostPerksFor(gdef.h, gdef.tt).map(x => esc(x.n)).join(' / ')}</div>` : ''}</div></div>`);
+    gd.onclick = () => openGhostPicker();
+    grid.appendChild(gd);
     for (const slot of SLOT_ORDER) {
       const x = items[slot];
       const d = el(`<div class="slot">
@@ -723,18 +768,45 @@
     document.body.appendChild(m);
   }
 
-  /* ----- engram (gacha with glimmer only) ----- */
-  const ENGRAM_COST = 300;
-  function rollEngramItem(cls, forceExotic) {
+  function openGhostPicker() {
+    const list = S.inv.map(inv => ({ inv, def: Data.ghostByHash.get(inv.h) })).filter(x => x.def)
+      .sort((a, b) => (b.def.tt - a.def.tt) || a.def.n.localeCompare(b.def.n, 'ja'));
+    const m = el(`<div class="modal"><div class="panel">
+      <div class="row"><b style="color:var(--accent)">ゴーストを選択</b><span class="grow"></span><button class="pbtn small x">✕</button></div>
+      <div class="muted" style="font-size:11px;margin:4px 0 8px">所持 ${list.length} 個 · ゴーストガチャで増えます</div>
+      <div class="picker"></div><div class="detail" style="margin-top:8px;font-size:12px"></div></div></div>`);
+    const pk = m.querySelector('.picker'), detail = m.querySelector('.detail');
+    for (const x of list) {
+      const d = el(`<div class="it t${x.def.tt}" title="${esc(x.def.n)}"><img src="${img(x.def.i)}" loading="lazy"></div>`);
+      d.onmouseenter = () => { detail.innerHTML = `<b class="t${x.def.tt}">${esc(x.def.n)}</b><br>${Content.ghostPerksFor(x.def.h, x.def.tt).map(q => esc(q.n)).join(' / ')}`; };
+      d.onclick = () => { S.ghost = x.inv.id; save(); m.remove(); renderHub('gear'); };
+      pk.appendChild(d);
+    }
+    m.querySelector('.x').onclick = () => m.remove();
+    document.body.appendChild(m);
+  }
+
+  /* ----- gacha (glimmer only, no real money): job / armor / weapon / ghost ----- */
+  const GACHA = {
+    job:    { n: 'ジョブ', cost: 500, col: ['#c8901e', '#ffd36a'], desc: 'サブクラス・近接・グレネード・クラススキル・スーパーの組み合わせがランダムなジョブ。クラスも混合。', rates: '★5: 10% / ★4: 30% / ★3: 60% · 10回で★4以上1つ確定' },
+    armor:  { n: '防具', cost: 300, col: ['#2f6fc0', '#7ab0f0'], desc: '全クラスの防具(シリーズ防具を含む)。ステータスはランダム。', rates: 'エキゾチック 6% · 10回目はエキゾチック率UP' },
+    weapon: { n: '武器', cost: 300, col: ['#7a3fc8', '#b07af0'], desc: 'キネティック・エネルギー・パワー武器。武器は全クラス共通。', rates: 'エキゾチック 6% · 10回目はエキゾチック率UP' },
+    ghost:  { n: 'ゴースト', cost: 300, col: ['#2f9a92', '#8ae8e0'], desc: 'ゴーストの外殻。外殻ごとに固定のパッシブ効果(エキゾチックは2つ)。', rates: 'エキゾチック 15%' },
+  };
+  let gachaTab = 'job';
+  function rollGearItem(kind, forceExotic) {
+    if (kind === 'ghost') {
+      const ex = forceExotic || Math.random() < 0.15;
+      const pool = Data.ghosts.filter(gh => gh.tt === (ex ? 6 : 5));
+      return pick(pool.length ? pool : Data.ghosts);
+    }
     const exotic = forceExotic || Math.random() < 0.06;
-    const slots = Math.random() < 0.55 ? ['kin', 'ene', 'pow'] : ARMOR_SLOTS;
-    const slot = pick(slots);
-    let pool = (Data.pool[slot] || []).filter(it => it.tt === (exotic ? 6 : 5) && (it.it === 3 || it.cl === cls || it.cl === 3));
-    if (!pool.length) pool = (Data.pool[slot] || []).filter(it => it.it === 3 || it.cl === cls);
+    const slot = pick(kind === 'weapon' ? ['kin', 'ene', 'pow'] : ARMOR_SLOTS);
+    let pool = (Data.pool[slot] || []).filter(it => it.tt === (exotic ? 6 : 5));
+    if (!pool.length) pool = Data.pool[slot] || [];
     return pick(pool);
   }
   function engramSprite(dark = '#7a3fc8', light = '#b07af0') {
-    // Small pixel engram (diamond) drawn procedurally
     const c = document.createElement('canvas'); c.width = 16; c.height = 16;
     const g = c.getContext('2d');
     const rows = ['.......KK.......', '......KPPK......', '.....KPLLPK.....', '....KPLWWLPK....', '...KPLWWWWLPK...', '..KPLLWWWWLLPK..', '.KPPLLLWWLLLPPK.', 'KPPPPLLLLLLPPPPK', '.KPPPPLLLLPPPPK.', '..KPPPPLLPPPPK..', '...KPPPPPPPPK...', '....KPPPPPPK....', '.....KPPPPK.....', '......KPPK......', '.......KK.......', '................'];
@@ -742,76 +814,58 @@
     rows.forEach((r, y) => [...r].forEach((ch, x) => { if (pal[ch]) { g.fillStyle = pal[ch]; g.fillRect(x, y, 1, 1); } }));
     return c;
   }
-  const JOB_ENGRAM_COST = 500;
-  function renderJobEngram(body) {
-    const d = el(`<div class="panel engram">
-      <div class="ec"></div>
-      <div style="margin:6px 0">ジョブ・エングラム召喚</div>
-      <div class="muted" style="font-size:12px;line-height:1.6">サブクラス・近接・グレネード・クラススキル・スーパーの組み合わせがランダムなジョブを召喚。<br>★5: 10% / ★4: 30% / ★3: 60% · 10回召喚は★4以上を1つ確定</div>
-      <div class="row" style="justify-content:center;margin-top:10px">
-        <button class="pbtn j1">1回 (${JOB_ENGRAM_COST})</button>
-        <button class="pbtn primary j10">10回 (${JOB_ENGRAM_COST * 9})</button>
-      </div>
-      <div class="job-res" style="margin-top:10px;text-align:left"></div></div>`);
-    d.querySelector('.ec').appendChild(spriteCanvas(engramSprite('#c8901e', '#ffd36a'), 6));
-    const pull = n => {
-      const cost = n === 10 ? JOB_ENGRAM_COST * 9 : JOB_ENGRAM_COST;
-      if (S.glimmer < cost) { toast('グリマーが足りません — ステージをクリアして集めましょう'); return; }
-      S.glimmer -= cost;
-      const res = d.querySelector('.job-res');
-      res.innerHTML = '';
-      for (let i = 0; i < n; i++) {
-        const r = n === 10 && i === 9 ? rollRarity(4) : rollRarity();
-        const g = grantJob(rollJob(rand(3), r));
-        const j = g.job;
-        const sub = Data.byHash.get(j.sub);
-        const e = subElement(sub);
-        const row = el(`<div class="job-card" style="animation:pop 300ms ease-out both;animation-delay:${i * 80}ms">
-          <div class="sp"></div><div class="grow">
-            <div><span class="stars r${r}">${stars(r)}</span> <span style="color:var(--${e})">${esc(j.name)}</span> ${g.dup ? `<span class="muted" style="font-size:11px">重複 → EXP+${g.xp}</span>` : '<span style="color:var(--good);font-size:11px">NEW</span>'}</div>
-            <div class="muted" style="font-size:11px">${CLASS_NAME[j.cl]} / ${esc(sub?.n || '?')}</div>
-            ${jobComboLine(j)}
-          </div></div>`);
-        row.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(j.cl, e), 2));
-        res.appendChild(row);
-      }
-      save(); updateGlimmer();
-    };
-    d.querySelector('.j1').onclick = () => pull(1);
-    d.querySelector('.j10').onclick = () => pull(10);
-    body.appendChild(d);
+  function jobResultCard(g, r, i) {
+    const j = g.job;
+    const sub = Data.byHash.get(j.sub);
+    const e = subElement(sub);
+    const row = el(`<div class="job-card" style="animation:pop 300ms ease-out both;animation-delay:${i * 80}ms">
+      <div class="sp"></div><div class="grow">
+        <div><span class="stars r${r}">${'★'.repeat(r)}</span> <span style="color:var(--${e})">${esc(j.name)}</span> ${g.dup ? `<span class="muted" style="font-size:11px">重複 → EXP+${g.xp}</span>` : '<span style="color:var(--good);font-size:11px">NEW</span>'}</div>
+        <div class="muted" style="font-size:11px">${CLASS_NAME[j.cl]} / ${esc(sub?.n || '?')}</div>
+        ${jobComboLine(j)}
+      </div></div>`);
+    row.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(j.cl, e), 1));
+    return row;
   }
   function renderEngram(body) {
-    renderJobEngram(body);
-    body.appendChild(el(`<div style="height:10px"></div>`));
-    const cls = activeJob().cl;
+    const tabs = el(`<div class="gtabs">${Object.entries(GACHA).map(([k, v]) => `<button class="${k === gachaTab ? 'active' : ''}" data-k="${k}">${v.n}</button>`).join('')}</div>`);
+    tabs.querySelectorAll('button').forEach(b => b.onclick = () => { gachaTab = b.dataset.k; renderHub('engram'); });
+    body.appendChild(tabs);
+    const G = GACHA[gachaTab];
     const d = el(`<div class="panel engram">
       <div class="ec"></div>
-      <div style="margin:6px 0">レジェンダリー・エングラム解読</div>
-      <div class="muted" style="font-size:12px;line-height:1.6">グリマーで解読。課金はありません。<br>エキゾチック排出率 6% · ${CLASS_NAME[cls]} 用の防具が出ます</div>
+      <div style="margin:6px 0">${G.n}・エングラム</div>
+      <div class="muted" style="font-size:12px;line-height:1.6">${esc(G.desc)}<br>${esc(G.rates)}<br>グリマーのみで解読(課金なし)</div>
       <div class="row" style="justify-content:center;margin-top:10px">
-        <button class="pbtn p1">1回 (${ENGRAM_COST})</button>
-        <button class="pbtn primary p10">10回 (${ENGRAM_COST * 9}) ※1回分お得</button>
+        <button class="pbtn p1">1回 (${G.cost})</button>
+        <button class="pbtn primary p10">10回 (${G.cost * 9})</button>
       </div>
-      <div class="pull-res"></div></div>`);
-    d.querySelector('.ec').appendChild(spriteCanvas(engramSprite(), 6));
-    const doPull = n => {
-      const cost = n === 10 ? ENGRAM_COST * 9 : ENGRAM_COST;
+      <div class="res" style="margin-top:10px"></div></div>`);
+    d.querySelector('.ec').appendChild(spriteCanvas(engramSprite(...G.col), 6));
+    const pull = n => {
+      const cost = n === 10 ? G.cost * 9 : G.cost;
       if (S.glimmer < cost) { toast('グリマーが足りません — ステージをクリアして集めましょう'); return; }
       S.glimmer -= cost;
-      const res = d.querySelector('.pull-res');
+      const res = d.querySelector('.res');
       res.innerHTML = '';
+      res.className = gachaTab === 'job' ? 'res' : 'res pull-res';
       for (let i = 0; i < n; i++) {
-        const it = rollEngramItem(cls, n === 10 && i === 9 && Math.random() < 0.3);
+        const last = n === 10 && i === 9;
+        if (gachaTab === 'job') {
+          const r = last ? rollRarity(4) : rollRarity();
+          res.appendChild(jobResultCard(grantJob(rollJob(rand(3), r)), r, i));
+          continue;
+        }
+        const it = rollGearItem(gachaTab, last && Math.random() < 0.3);
         if (!it) continue;
         addItem(it, 'gacha');
-        const c = el(`<div class="it t${it.tt}" style="animation-delay:${i * 80}ms" title="${esc(it.n)}"><img src="${img(it.i)}"><div class="n">${esc(it.n)}</div></div>`);
-        res.appendChild(c);
+        const sub = gachaTab === 'ghost' ? Content.ghostPerksFor(it.h, it.tt).map(q => q.n).join(' / ') : (it.t || '');
+        res.appendChild(el(`<div class="it t${it.tt}" style="animation-delay:${i * 80}ms" title="${esc(it.n + ' — ' + sub)}"><img src="${img(it.i)}"><div class="n">${esc(it.n)}</div></div>`));
       }
       save(); updateGlimmer();
     };
-    d.querySelector('.p1').onclick = () => doPull(1);
-    d.querySelector('.p10').onclick = () => doPull(10);
+    d.querySelector('.p1').onclick = () => pull(1);
+    d.querySelector('.p10').onclick = () => pull(10);
     body.appendChild(d);
   }
 
@@ -848,7 +902,14 @@
     });
   }
 
-  /* ===================== battle ===================== */
+  /* ===================== battle (Mobius-style portrait screen) =====================
+   * Camera behind the guardian: player (back view) in the foreground, enemies further away.
+   * Top: elements (sorted). Tap screen/enemy = normal attack (kinetic).
+   * Left: kinetic / energy / heavy weapons. Right: melee / grenade / class ability.
+   * Bottom: HP bar, Super gauge (tap when full), guard ring (long press = spend elements for a defensive buff). */
+  const BW = 180, BH = 320, BRS = 3;
+  const ORB_ORDER = ['arc', 'solar', 'void', 'stasis', 'strand', 'light'];
+
   function costPips(cost) {
     return Object.entries(cost).flatMap(([e, n]) => Array.from({ length: n }, () => `<i style="background:${e === 'any' ? '#888' : Sprites.ELEMENT_COLORS[e]}"></i>`)).join('');
   }
@@ -866,88 +927,123 @@
       for (let i = 0; i < n; i++) p.orbs.splice(p.orbs.indexOf(e), 1);
     }
     for (let i = 0; i < (cost.any || 0); i++) {
-      // spend the most plentiful non-light element first
       const counts = {};
       p.orbs.forEach(o => { counts[o] = (counts[o] || 0) + (o === 'light' ? 0.5 : 1); });
       const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
       p.orbs.splice(p.orbs.indexOf(best), 1);
     }
   }
-
   function makeEnemy(key, lv) {
     const d = Content.enemyDef(key);
     const k = 1 + (lv - 1) * 0.55;
     return {
       ...d, maxHp: Math.round(d.hp * k), hp: Math.round(d.hp * k), atkV: Math.round(d.atk * (1 + (lv - 1) * 0.3)),
-      counter: d.spd, bk: d.brk, broken: 0, sprite: null, x: 0, y: 0, hitT: 0, dieT: 0, scale: d.scale || 1,
+      counter: d.spd, bk: d.brk, broken: 0, sprites: null, x: 0, y: 0, depth: 1, hitT: 0, dieT: 0, atkT: 0, kb: 0,
+      scale: d.scale || 1, phase: Math.random() * 6,
     };
   }
 
   async function runBattle(st, act) {
     const p = buildPlayer();
-    const cards = buildCards(p);
+    const C = buildCards(p);
     const B = {
-      st, p, cards, wave: 0, enemies: [], target: 0, busy: true, done: null,
-      fx: [], shake: 0, banner: null, log: [], playerAtkT: 0, playerHitT: 0, superFlash: 0, time: 0,
-      bg: null,
+      st, p, C, wave: 0, enemies: [], target: 0, busy: true, done: null, time: 0,
+      fx: [], shake: 0, banner: null, log: [], hurtT: 0, flash: 0,
+      pAtkT: 0, pHitT: 0, pDash: 0, pDodge: 0, held: 'kin', heldT: 0, superFx: null, ringHold: 0,
     };
     app().innerHTML = `
-      <div class="battle">
-        <div class="bhead"><span style="color:var(--accent)">${esc(st.no)}</span> ${esc(st.name)}<span class="grow"></span><span class="wv"></span><button class="pbtn small flee">撤退</button></div>
-        <canvas id="bc" width="${VW * RS}" height="${VH * RS}"></canvas>
-        <div class="hud">
-          <div class="row" style="gap:6px"><span style="font-size:11px;width:24px">HP</span><div class="bar grow hp"><i></i><span></span></div></div>
-          <div class="row" style="gap:6px"><span style="font-size:11px;width:24px">SP</span><div class="bar super grow sg"><i></i><span></span></div></div>
-          <div class="orbs"></div>
-          <div class="cards"></div>
-          <div class="row" style="gap:6px">
-            <button class="pbtn grow atk">🔫 通常攻撃 (${esc(p.items.kin?.def.n || '素手')})</button>
+      <div class="bt">
+        <canvas id="bc" width="${BW * BRS}" height="${BH * BRS}"></canvas>
+        <div class="bt-top">
+          <div class="bt-info"><span class="stg">${esc(st.no)} ${esc(st.name)}</span><span class="grow"></span><span class="wv"></span><button class="pbtn small flee">撤退</button></div>
+          <div class="bt-orbs"></div>
+        </div>
+        <div class="bt-side bt-left"></div>
+        <div class="bt-side bt-right"></div>
+        <div class="bt-log"></div>
+        <div class="bt-bottom">
+          <div class="bt-bars">
+            <div class="bt-name"><span class="stars r${p.job.r || 3}">${'★'.repeat(p.job.r || 3)}</span> ${esc(p.job.name)} <span class="muted">Lv.${p.lv}</span></div>
+            <div class="bar hp"><i></i><span></span></div>
+            <button class="bar super sp"><i></i><span></span></button>
           </div>
-          <button class="pbtn superbtn">SUPER: ${esc(p.abil.sup?.n || 'なし')}</button>
-          <div class="blog"></div>
+          <div class="ring"><canvas width="192" height="192"></canvas><span>GUARD</span></div>
         </div>
       </div>`;
     const canvas = $('#bc');
     const g = canvas.getContext('2d');
     g.imageSmoothingEnabled = false;
 
-    // Background (API PGCR image, pixelated)
-    try { B.bg = act ? await Sprites.pixelatedBackground(img(act.img), 160, 90) : Sprites.gridBackground(160, 90); }
-    catch { B.bg = Sprites.gridBackground(160, 90); }
-    B.playerSprite = Sprites.guardianSprite(p.cls, p.element === 'prism' ? 'prism' : p.element);
-    B.ghostSprite = Sprites.ghostSprite(p.element === 'prism' ? 'prism' : p.element);
+    // ---- assets: background (API PGCR, pixelated), guardian colored by equipped armor icons, ghost by shell ----
+    try { B.bg = act ? await Sprites.pixelatedBackground(img(act.img), 90, 160) : Sprites.gridBackground(90, 160); }
+    catch { B.bg = Sprites.gridBackground(90, 160); }
+    const vis = p.element === 'prism' ? 'prism' : p.element;
+    const armorPal = await Sprites.armorPalette({
+      head: p.items.head && img(p.items.head.def.i), chest: p.items.chest && img(p.items.chest.def.i), cls: p.items.cls && img(p.items.cls.def.i),
+    }).catch(() => ({}));
+    B.guardian = Sprites.guardianBack(p.cls, vis, armorPal);
+    const gc = p.ghost ? await Sprites.iconColor(img(p.ghost.i)) : null;
+    B.ghostSprite = Sprites.ghostSprite(vis, gc ? { A: gc, a: Sprites.shade(gc, -50) } : null);
+    B.weapons = {};
+    for (const k of ['kin', 'ene', 'pow']) {
+      const d = p.items[k]?.def;
+      if (d) B.weapons[k] = Sprites.weaponSprite(d.is, DT_ELEMENT[d.dt] || 'kin');
+    }
 
-    const log = msg => { B.log.push(msg); B.log = B.log.slice(-2); $('.blog').innerHTML = B.log.map(esc).join('<br>'); };
-    const popup = (x, y, text, color, big) => B.fx.push({ type: 'txt', x, y, text, color, t: 0, dur: 900, big });
-    const beam = (x0, y0, x1, y1, color) => B.fx.push({ type: 'beam', x0, y0, x1, y1, color, t: 0, dur: 220 });
-    const burst = (x, y, color, n = 10) => { for (let i = 0; i < n; i++) B.fx.push({ type: 'pt', x, y, vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 3, color, t: 0, dur: 500 + rand(300) }); };
+    // ---- geometry ----
+    const PX = 104, PY = 292, PSC = 2.1; // player feet + sprite scale
+    const pBox = () => {
+      const s = B.guardian.sprite;
+      const w = s.width * PSC, h = s.height * PSC;
+      const dodge = Math.sin(B.pDodge * Math.PI) * 26;
+      const dash = Math.sin(B.pDash * Math.PI);
+      return { x: PX - w / 2 - dodge, y: PY - h - dash * 40, w, h, cx: PX - dodge, dash };
+    };
+    const handPos = () => { const b = pBox(); const [hx, hy] = B.guardian.hand; return { x: b.x + hx * PSC, y: b.y + hy * PSC }; };
+    const eBox = e => {
+      const s = e.sprites?.[0];
+      const sc = (e.holo ? 1.7 : 1.6) * e.scale * e.depth;
+      const w = (s?.width || 32) * sc, h = (s?.height || 32) * sc;
+      const bob = Sprites.FLOATING.has(e.tpl) || e.holo ? Math.sin(B.time / 500 + e.phase) * 3 - 6 : 0;
+      return { x: e.x - w / 2, y: e.y - h + bob, w, h, cy: e.y - h / 2 + bob };
+    };
+
+    const log = msg => { B.log.push(msg); B.log = B.log.slice(-2); $('.bt-log').innerHTML = B.log.map(esc).join('<br>'); };
+    const popup = (x, y, text, color, big) => B.fx.push({ type: 'txt', x, y, text, color, t: 0, dur: 1000, big });
+    const tracer = (x0, y0, x1, y1, color, w = 1.5) => B.fx.push({ type: 'beam', x0, y0, x1, y1, color, w, t: 0, dur: 180 });
+    const burst = (x, y, color, n = 10, sp = 2.5) => { for (let i = 0; i < n; i++) B.fx.push({ type: 'pt', x, y, vx: (Math.random() - 0.5) * sp, vy: -Math.random() * sp, color, t: 0, dur: 450 + rand(350) }); };
+    const ringFx = (x, y, color, r = 30, dur = 450) => B.fx.push({ type: 'ring', x, y, color, r, t: 0, dur });
+    const lob = (x0, y0, x1, y1, color, dur = 420) => B.fx.push({ type: 'lob', x0, y0, x1, y1, color, t: 0, dur });
 
     async function loadWave() {
-      const keys = st.waves[B.wave];
-      B.enemies = keys.map(k => makeEnemy(k, st.lv));
+      B.enemies = st.waves[B.wave].map(k => makeEnemy(k, st.lv));
       if (p.fx === 'delay') B.enemies.forEach(e => e.counter++);
       layoutEnemies();
       await Promise.all(B.enemies.map(async e => {
         if (e.holo) {
-          try { e.sprite = await Sprites.pixelatedHologram(img(e.holo), 32); }
-          catch { e.sprite = Sprites.enemySprite('orb', 'fallen', e.weak); }
+          try { const s = await Sprites.pixelatedHologram(img(e.holo), 32); e.sprites = [s, s, s]; }
+          catch { e.sprites = [0, 1, 2].map(gl => Sprites.enemySprite('servitor', 'fallen', e.weak, null, gl)); }
         } else {
-          e.sprite = Sprites.enemySprite(e.tpl, e.fac, e.weak);
+          e.sprites = [0, 1, 2].map(gl => Sprites.enemySprite(e.tpl, e.fac, e.weak, e.pal, gl));
         }
       }));
-      B.target = B.enemies.findIndex(e => e.boss);
-      if (B.target < 0) B.target = 0;
-      $('.wv').textContent = `WAVE ${B.wave + 1}/${st.waves.length}`;
-      B.banner = { text: B.enemies.some(e => e.boss) ? 'WARNING' : `WAVE ${B.wave + 1}`, t: 0, dur: 1100, color: B.enemies.some(e => e.boss) ? '#ff4d4d' : '#ffd28a' };
+      B.target = Math.max(0, B.enemies.findIndex(e => e.boss));
+      $('.wv').textContent = `BATTLE ${B.wave + 1}/${st.waves.length}`;
+      const boss = B.enemies.some(e => e.boss);
+      B.banner = { text: boss ? 'WARNING' : `BATTLE ${B.wave + 1}`, t: 0, dur: 1100, color: boss ? '#ff4d4d' : '#ffd28a' };
       await sleep(900);
     }
     function layoutEnemies() {
       const n = B.enemies.length;
       const boss = B.enemies.findIndex(e => e.boss);
-      const slots = n === 1 ? [[240, 134]] : n === 2 ? [[210, 128], [272, 142]] : [[190, 124], [240, 144], [284, 120]];
+      const slots = n === 1 ? [[90, 172]] : n === 2 ? [[64, 176], [116, 170]] : [[52, 180], [90, 164], [128, 178]];
       let order = B.enemies.map((e, i) => i);
-      if (boss >= 0 && n > 1) { order = order.filter(i => i !== boss); order.splice(1, 0, boss); }
-      order.forEach((ei, si) => { const [x, y] = slots[si] || slots[0]; B.enemies[ei].x = x; B.enemies[ei].y = y; });
+      if (boss >= 0 && n === 3) { order = order.filter(i => i !== boss); order.splice(1, 0, boss); }
+      order.forEach((ei, si) => {
+        const e = B.enemies[ei];
+        const [x, y] = slots[si];
+        e.x = x; e.y = y; e.depth = 0.82 + (y - 160) / 90;
+      });
     }
     const alive = () => B.enemies.filter(e => e.hp > 0);
     function retarget() {
@@ -956,23 +1052,14 @@
       B.target = i < 0 ? 0 : i;
     }
     function gainOrbs(n) {
-      const pool = [];
-      if (p.element === 'prism') pool.push('arc', 'solar', 'void', 'stasis', 'strand');
-      else pool.push(p.element, p.element, p.element);
+      const pool = p.element === 'prism' ? ['arc', 'solar', 'void', 'stasis', 'strand'] : [p.element, p.element, p.element];
       const ee = DT_ELEMENT[p.items.ene?.def.dt];
       if (ee && ee !== 'kin') pool.push(ee, ee);
       pool.push('light', 'light');
       for (let i = 0; i < n && p.orbs.length < MAX_ORBS; i++) p.orbs.push(pick(pool));
     }
     function addSuper(v) { p.superG = clamp(p.superG + v * p.superRate, 0, 100); }
-    function spriteBox(e) {
-      const s = e.sprite;
-      const sc = (e.holo ? 1.5 : 2) * e.scale;
-      const w = (s?.width || 24) * sc, h = (s?.height || 24) * sc;
-      return { x: e.x - w / 2, y: e.y - h, w, h, sc };
-    }
 
-    // Deal damage to one enemy; returns dealt amount
     function hit(e, base, elem, brk, opts = {}) {
       if (e.hp <= 0) return 0;
       let d = base * (0.9 + Math.random() * 0.2);
@@ -985,117 +1072,191 @@
       if (opts.ability && p.fx === 'ability') d *= 1.2;
       d = Math.round(d);
       e.hp = Math.max(0, e.hp - d);
-      e.hitT = 1;
-      const bx = spriteBox(e);
-      popup(e.x + rand(10) - 5, bx.y + 6, (crit ? '!' : '') + d.toLocaleString(), weak ? Sprites.ELEMENT_COLORS[elem] : '#ffffff', crit || opts.big);
-      burst(e.x, e.y - bx.h / 2, Sprites.ELEMENT_COLORS[elem] || '#fff', 6);
-      // Break gauge (D2 elemental shield)
+      e.hitT = 1; e.kb = 1;
+      const b = eBox(e);
+      popup(e.x + rand(12) - 6, b.y + 4, (crit ? '!' : '') + d.toLocaleString(), weak ? Sprites.ELEMENT_COLORS[elem] : '#ffffff', crit || opts.big);
+      burst(e.x, b.cy, Sprites.ELEMENT_COLORS[elem] || '#fff', 7);
       if (e.broken <= 0 && brk > 0) {
-        e.bk -= brk * (weak ? 3 : 1) * (elem === 'kin' ? 0.6 : 1) * (p.fx === 'brk' ? 1.25 : 1);
+        e.bk -= brk * (weak ? 3 : 1) * (elem === 'kin' ? 0.6 : 1) * p.brkMult;
         if (e.bk <= 0) {
           e.bk = 0; e.broken = 3; e.counter += 1;
-          popup(e.x, bx.y - 6, 'BREAK!', '#ffd84a', true);
+          popup(e.x, b.y - 10, 'BREAK!', '#ffd84a', true);
+          ringFx(e.x, b.cy, '#ffd84a', 34, 500);
           B.shake = 6; addSuper(15);
           log(`${e.n} をブレイク! 3ターンの間ダメージ2倍`);
         }
       }
-      if (e.hp <= 0) { e.dieT = 1; burst(e.x, e.y - bx.h / 2, '#ffffff', 16); }
+      if (e.hp <= 0) { e.dieT = 1; burst(e.x, b.cy, '#ffffff', 18, 3.5); }
       return d;
     }
-
-    async function playerAttackAnim(target, color) {
-      B.playerAtkT = 1;
-      const tb = spriteBox(target);
-      beam(84, 118, target.x, tb.y + tb.h / 2, color);
-      await sleep(180);
+    function holdWeapon(k) { B.held = k; B.heldT = 1400; }
+    const frameLabel = c => (c.fire?.frame ? `(${c.fire.frame.n}${c.fire.shots > 1 ? ` · ${c.fire.shots}発` : ''})` : '');
+    // Fires a weapon following its frame: burst / auto / spread / charge / arrow / blade / explosive
+    async function fireWeapon(c, total, brk, opts = {}) {
+      const f = c.fire || { shots: 1, mode: 'single' };
+      const e = B.enemies[B.target];
+      const color = c.el === 'kin' ? '#fff7d0' : (Sprites.ELEMENT_COLORS[c.el] || '#fff');
+      holdWeapon(c.id);
+      const n = ['spread', 'blade', 'arrow', 'explosive'].includes(f.mode) ? 1 : f.shots;
+      const gap = { auto: 55, burst: 70, beam: 40, arrow: 260, explosive: 320, blade: 170, spread: 110, charge: 60 }[f.mode] || 110;
+      if (f.mode === 'charge') { B.fx.push({ type: 'charge', color, t: 0, dur: 380 }); await sleep(380); }
+      let dealt = 0;
+      for (let i = 0; i < n; i++) {
+        if (e.hp <= 0) break;
+        B.pAtkT = 1;
+        const hp0 = handPos(), b = eBox(e);
+        const tx = e.x + rand(10) - 5, ty = b.cy + rand(10) - 5;
+        if (f.mode === 'spread') { for (let k = 0; k < 7; k++) tracer(hp0.x, hp0.y - 6, tx + rand(28) - 14, ty + rand(22) - 11, color, 1); }
+        else if (f.mode === 'arrow' || f.mode === 'explosive') lob(hp0.x, hp0.y, tx, ty, color, gap);
+        else if (f.mode === 'blade') B.pDash = 0.001;
+        else tracer(hp0.x, hp0.y - 6, tx, ty, color, f.mode === 'beam' ? 2.5 : 1.5);
+        await sleep(gap);
+        if (f.mode === 'explosive') { ringFx(tx, ty, color, 36, 450); B.shake = 6; }
+        if (f.mode === 'blade') B.fx.push({ type: 'slash', x: e.x, y: b.cy, color, t: 0, dur: 300 });
+        dealt += hit(e, total / n, c.el, brk / n, { big: opts.big && i === n - 1 });
+      }
+      if (f.mode === 'blade') await sleep(170);
+      return dealt;
     }
 
     // ---- actions ----
     async function normalAttack() {
-      const e = B.enemies[B.target];
       const kin = p.items.kin?.def;
       const special = kin?.am === 2;
       const base = p.atk * (0.6 + weaponImpact(kin) / 100) * (special ? 1.6 : 1) * (1 + p.stats.weapons / 150) * (p.buffs.gunslinger ? 1.8 : 1);
       p.buffs.gunslinger = 0;
-      await playerAttackAnim(e, '#ffffff');
-      hit(e, base, DT_ELEMENT[kin?.dt] || 'kin', 6);
+      await fireWeapon(C.kin, base, 6);
       const n = (special ? 1 : 2) + (p.fx === 'orb' ? 1 : 0);
       gainOrbs(n);
       addSuper(6);
-      log(`${kin?.n || '素手'} で攻撃 → エレメント +${n}`);
+      log(`${C.kin.name}${frameLabel(C.kin)} → エレメント +${n}`);
     }
     async function useCard(c) {
       pay(p, c.cost);
-      if (c.kind === 'atk') {
-        const targets = c.aoe ? alive() : [B.enemies[B.target]];
-        const color = Sprites.ELEMENT_COLORS[c.el] || '#fff';
-        B.playerAtkT = 1;
-        for (const t of targets) { const tb = spriteBox(t); beam(84, 118, t.x, tb.y + tb.h / 2, color); }
-        await sleep(200);
+      const color = Sprites.ELEMENT_COLORS[c.el] || '#fff';
+      if (c.id === 'ene' || c.id === 'pow') {
+        const e = B.enemies[B.target];
+        const d = await fireWeapon(c, p.atk * c.mult, c.brk, { big: c.id === 'pow' });
+        if (c.id === 'pow') { const b = eBox(e); ringFx(e.x, b.cy, color, 40, 500); B.shake = 7; B.flash = 0.35; }
+        log(`${c.name}${frameLabel(c)}! ${d.toLocaleString()} ダメージ`);
+      } else if (c.id === 'mel') {
+        const e = B.enemies[B.target], b = eBox(e);
+        B.pDash = 0.001;
+        await sleep(160);
+        ringFx(e.x, b.cy, color, 22, 300);
+        B.fx.push({ type: 'slash', x: e.x, y: b.cy, color, t: 0, dur: 300 });
+        const d = hit(e, p.atk * c.mult, c.el, c.brk, { ability: true });
+        B.shake = 4;
+        log(`${c.name}! ${d.toLocaleString()} ダメージ`);
+        await sleep(160);
+      } else if (c.id === 'gre') {
+        const h = handPos();
+        const ts = alive();
+        const cx = ts.reduce((a, t) => a + t.x, 0) / ts.length, cy = ts.reduce((a, t) => a + eBox(t).cy, 0) / ts.length;
+        lob(h.x, h.y, cx, cy, color);
+        await sleep(420);
+        ringFx(cx, cy, color, 60, 600);
+        burst(cx, cy, color, 24, 4);
+        B.shake = 6; B.flash = 0.25;
         let total = 0;
-        for (const t of targets) total += hit(t, p.atk * c.mult, c.el, c.brk, { ability: c.id === 'gre' || c.id === 'mel', big: c.id === 'pow' });
-        if (c.id === 'pow') B.shake = 5;
-        addSuper(10);
-        log(`${c.name}! ${total.toLocaleString()} ダメージ`);
-      } else if (c.kind === 'class') {
+        for (const t of ts) total += hit(t, p.atk * c.mult, c.el, c.brk, { ability: true });
+        log(`${c.name}! 合計 ${total.toLocaleString()} ダメージ`);
+      } else if (c.id === 'cls') {
         const m = 1 + p.stats.cls / 100;
-        if (p.cls === 0) { p.buffs.barricade = 2; log(`${c.name}: 2ターンの間 被ダメージ ${Math.round(50 * Math.min(1.4, m))}% カット`); popup(60, 70, 'BARRICADE', '#79bbff', true); }
-        else if (p.cls === 1) { p.buffs.evade = 1; p.buffs.gunslinger = 1; log(`${c.name}: 次の攻撃を回避 & 次の通常攻撃が強化`); popup(60, 70, 'DODGE', '#e2c770', true); }
-        else { const v = Math.round(p.maxHp * 0.22 * m * (p.fx === 'heal' ? 1.3 : 1)); p.hp = Math.min(p.maxHp, p.hp + v); p.buffs.regen = 3; popup(60, 70, '+' + v, '#6ee07a', true); log(`${c.name}: HP ${v} 回復 + 3ターン継続回復`); }
+        if (p.cls === 0) {
+          p.buffs.barricade = 2;
+          B.fx.push({ type: 'wall', t: 0, dur: 99999, color });
+          log(`${c.name}: 2ターンの間 被ダメージ 50% カット`);
+        } else if (p.cls === 1) {
+          B.pDodge = 0.001;
+          p.buffs.evade = 1; p.buffs.gunslinger = 1;
+          log(`${c.name}: 次の攻撃を回避 & 次の通常攻撃が強化`);
+        } else {
+          const v = Math.round(p.maxHp * 0.22 * m * p.healMult);
+          p.hp = Math.min(p.maxHp, p.hp + v); p.buffs.regen = 3;
+          B.fx.push({ type: 'rift', t: 0, dur: 1600, color });
+          popup(PX, PY - 100, '+' + v, '#6ee07a', true);
+          log(`${c.name}: HP ${v} 回復 + 3ターン継続回復`);
+        }
         addSuper(6);
-      } else if (c.kind === 'heal') {
-        const v = Math.round(p.maxHp * 0.3 * (p.fx === 'heal' ? 1.3 : 1));
-        p.hp = Math.min(p.maxHp, p.hp + v);
-        popup(60, 70, '+' + v, '#6ee07a', true);
-        log(`ゴーストが光を注ぐ: HP ${v} 回復`);
+        await sleep(300);
+        return;
       }
+      addSuper(10);
     }
     async function useSuper() {
       const s = p.abil.sup;
+      const color = Sprites.ELEMENT_COLORS[p.element] || '#fff';
       p.superG = 0;
-      B.superFlash = 1;
-      B.banner = { text: s?.n || 'SUPER', t: 0, dur: 1000, color: Sprites.ELEMENT_COLORS[p.element] || '#fff' };
-      await sleep(700);
-      B.shake = 10;
-      const elem = p.element;
+      B.superFx = { t: 0, dur: 2100, color, name: s?.n || 'SUPER', icon: s };
+      await sleep(1250);
+      const ts = alive();
+      for (const t of ts) { const b = eBox(t); ringFx(t.x, b.cy, color, 70, 700); burst(t.x, b.cy, color, 30, 5); }
+      B.shake = 14; B.flash = 1;
       let total = 0;
-      for (const t of alive()) total += hit(t, p.atk * 6.5 * (1 + p.stats.super / 150), elem, 40, { big: true });
+      for (const t of ts) total += hit(t, p.atk * 6.5 * (1 + p.stats.super / 150), p.element, 40, { big: true });
       log(`スーパー「${s?.n || ''}」! 合計 ${total.toLocaleString()} ダメージ`);
-      await sleep(300);
+      await sleep(850);
+    }
+    // Guard ring: spend all orbs of the most plentiful element (max 8) → defensive buff by element
+    async function guard() {
+      const counts = {};
+      p.orbs.forEach(o => { counts[o] = (counts[o] || 0) + 1; });
+      const el = ORB_ORDER.filter(e => counts[e]).sort((a, b) => counts[b] - counts[a])[0];
+      if (!el) return;
+      const n = Math.min(8, counts[el]);
+      for (let i = 0; i < n; i++) p.orbs.splice(p.orbs.indexOf(el), 1);
+      const def = Content.GUARD[el];
+      const color = Sprites.ELEMENT_COLORS[el];
+      if (el === 'arc') p.buffs.evadeUp = { v: Math.min(0.6, 0.1 * n), t: 2 };
+      else if (el === 'solar') p.buffs.armor = { v: Math.min(0.5, 0.08 * n), t: 2 };
+      else if (el === 'void') p.shield = (p.shield || 0) + Math.round(p.maxHp * 0.06 * n);
+      else if (el === 'stasis') { p.buffs.armor = { v: Math.min(0.4, 0.06 * n), t: 2 }; if (n >= 4) alive().forEach(e => e.counter++); }
+      else if (el === 'strand') { p.buffs.armor = { v: Math.min(0.35, 0.05 * n), t: 2 }; p.buffs.weave = { v: 0.02 * n, t: 3 }; }
+      else { const v = Math.round(p.maxHp * 0.07 * n * p.healMult); p.hp = Math.min(p.maxHp, p.hp + v); popup(PX, PY - 100, '+' + v, '#6ee07a', true); }
+      B.fx.push({ type: 'guard', t: 0, dur: 900, color });
+      burst(PX, PY - 50, color, 20, 3);
+      log(`${def.n}(${ELEMENT_NAME[el]} ×${n}): ${def.d}`);
+      await sleep(400);
     }
 
     // ---- enemy phase ----
     async function enemyPhase() {
       for (const e of alive()) {
-        if (e.broken > 0) {
-          e.broken--;
-          if (e.broken === 0) e.bk = Content.enemyDef(e.key).brk;
-          continue;
-        }
+        if (e.broken > 0) { e.broken--; if (e.broken === 0) e.bk = Content.enemyDef(e.key).brk; continue; }
         e.counter--;
         if (e.counter > 0) continue;
         e.counter = e.spd;
         e.atkT = 1;
-        await sleep(200);
-        if (p.buffs.evade || Math.random() < p.evade) {
+        await sleep(180);
+        const b = eBox(e);
+        const shotColor = e.holo ? '#8fe8ff' : Sprites.ELEMENT_COLORS[e.weak];
+        tracer(e.x, b.cy, PX + rand(16) - 8, PY - 60, shotColor, 2);
+        await sleep(120);
+        const evade = p.evade + (p.buffs.evadeUp?.v || 0);
+        if (p.buffs.evade || Math.random() < evade) {
           p.buffs.evade = 0;
-          popup(60, 80, 'MISS', '#e2c770');
+          popup(PX, PY - 90, 'MISS', '#e2c770');
           log(`${e.n} の攻撃を回避した`);
         } else {
-          let d = e.atkV * (0.9 + Math.random() * 0.2) * (1 - p.dr);
+          let d = e.atkV * (0.9 + Math.random() * 0.2) * (1 - p.dr) * (e.boss ? 1.25 : 1);
           if (p.buffs.barricade) d *= 0.5;
-          d = Math.round(d * (e.boss ? 1.25 : 1));
+          if (p.buffs.armor) d *= 1 - p.buffs.armor.v;
+          d = Math.round(d);
+          if (p.shield) { const ab = Math.min(p.shield, d); p.shield -= ab; d -= ab; if (ab) popup(PX + 14, PY - 104, `-${ab} 🛡`, '#c9a6ff'); }
           p.hp = Math.max(0, p.hp - d);
-          B.playerHitT = 1; B.shake = 4;
-          popup(60, 80, '-' + d, '#ff5d5d', d > p.maxHp * 0.2);
+          B.pHitT = 1; B.shake = 5; B.hurtT = 1;
+          if (d) popup(PX, PY - 90, '-' + d, '#ff5d5d', d > p.maxHp * 0.2);
           addSuper(4);
           log(`${e.n} の攻撃! ${d} ダメージ`);
         }
-        await sleep(260);
+        await sleep(240);
         if (p.hp <= 0) return;
       }
-      if (p.buffs.barricade) p.buffs.barricade--;
-      if (p.buffs.regen) { const v = Math.round(p.maxHp * 0.06); p.hp = Math.min(p.maxHp, p.hp + v); popup(60, 64, '+' + v, '#6ee07a'); p.buffs.regen--; }
+      if (p.buffs.barricade && --p.buffs.barricade <= 0) B.fx = B.fx.filter(f => f.type !== 'wall');
+      for (const k of ['armor', 'evadeUp']) if (p.buffs[k] && --p.buffs[k].t <= 0) delete p.buffs[k];
+      if (p.buffs.regen) { const v = Math.round(p.maxHp * 0.06 * p.healMult); p.hp = Math.min(p.maxHp, p.hp + v); popup(PX - 16, PY - 110, '+' + v, '#6ee07a'); p.buffs.regen--; }
+      if (p.buffs.weave) { const v = Math.round(p.maxHp * p.buffs.weave.v * p.healMult); p.hp = Math.min(p.maxHp, p.hp + v); popup(PX + 16, PY - 110, '+' + v, '#5fd970'); if (--p.buffs.weave.t <= 0) delete p.buffs.weave; }
     }
 
     // ---- turn driver ----
@@ -1104,7 +1265,7 @@
       B.busy = true; updateHud();
       await fn();
       updateHud();
-      await sleep(250);
+      await sleep(220);
       if (!alive().length) {
         await sleep(400);
         if (B.wave + 1 < st.waves.length) { B.wave++; await loadWave(); }
@@ -1119,26 +1280,22 @@
 
     let resolveBattle;
     const battleDone = new Promise(r => { resolveBattle = r; });
+    let running = true;
     async function finish() {
       updateHud();
       await sleep(1300);
       running = false;
       if (B.done !== 'win') return resolveBattle({ win: false });
-      // Rewards
       const first = !S.cleared[st.id];
-      const glimmer = Math.round(st.reward * (first || st.farm ? 1 : 0.6)) + (first ? 500 : 0);
+      const glimmer = Math.round((Math.round(st.reward * (first || st.farm ? 1 : 0.6)) + (first ? 500 : 0)) * (p.gp.has('glim') ? 1.25 : 1));
       S.glimmer += glimmer;
       const job = jobById(p.job.id);
-      const xp = Math.round(30 * st.lv);
+      const xp = Math.round(30 * st.lv * (p.gp.has('xp') ? 1.25 : 1));
       const levelUp = gainJobXp(job, xp);
       const drops = [];
       if (st.drop && (Math.random() < st.drop.chance || (st.drop.first && first))) {
-        let it = null;
-        if (st.drop.pool === 'exotic') it = rollEngramItem(p.cls, true);
-        else {
-          const slot = st.drop.pool === 'armor' ? pick(ARMOR_SLOTS) : pick(['kin', 'ene', 'pow']);
-          it = pick((Data.pool[slot] || []).filter(x => x.tt === (Math.random() < 0.05 ? 6 : 5) && (x.it === 3 || x.cl === p.cls || x.cl === 3)));
-        }
+        const kind = st.drop.pool === 'exotic' ? (Math.random() < 0.5 ? 'weapon' : 'armor') : st.drop.pool;
+        const it = rollGearItem(kind, st.drop.pool === 'exotic');
         if (it) { addItem(it, 'drop'); drops.push(it); }
       }
       save();
@@ -1146,51 +1303,88 @@
     }
 
     // ---- HUD ----
+    const sideBtn = c => c ? `<button class="abtn" data-id="${c.id}">
+        ${c.icon ? `<img src="${img(c.icon)}" alt="">` : ''}
+        <span class="an">${esc(c.name)}</span>
+        <span class="cost">${c.kind === 'normal' ? '<b>通常</b>' : costPips(c.cost)}</span></button>` : '<div class="abtn empty"></div>';
+    $('.bt-left').innerHTML = ['kin', 'ene', 'pow'].map(k => sideBtn(C[k])).join('');
+    $('.bt-right').innerHTML = ['mel', 'gre', 'cls'].map(k => sideBtn(C[k])).join('');
+    $$('.abtn[data-id]').forEach(b => b.onclick = ev => {
+      ev.stopPropagation();
+      const c = C[b.dataset.id];
+      if (c.kind === 'normal') doAction(normalAttack);
+      else doAction(() => useCard(c));
+    });
+    function drawRing() {
+      const rc = $('.ring canvas').getContext('2d');
+      const R = 96;
+      rc.clearRect(0, 0, 192, 192);
+      const sorted = ORB_ORDER.flatMap(e => p.orbs.filter(o => o === e));
+      const seg = (Math.PI * 2) / MAX_ORBS;
+      for (let i = 0; i < MAX_ORBS; i++) {
+        rc.beginPath();
+        rc.arc(R, R, 78, -Math.PI / 2 + i * seg + 0.04, -Math.PI / 2 + (i + 1) * seg - 0.04);
+        rc.strokeStyle = sorted[i] ? Sprites.ELEMENT_COLORS[sorted[i]] : 'rgba(255,255,255,0.12)';
+        rc.lineWidth = 20; rc.stroke();
+      }
+      rc.beginPath(); rc.arc(R, R, 56, 0, Math.PI * 2); rc.fillStyle = 'rgba(8,10,16,0.85)'; rc.fill();
+      if (B.ringHold > 0) {
+        rc.beginPath(); rc.arc(R, R, 56, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, B.ringHold));
+        rc.strokeStyle = '#ffffff'; rc.lineWidth = 8; rc.stroke();
+      }
+    }
     function updateHud() {
       $('.hp i').style.width = (p.hp / p.maxHp * 100) + '%';
-      $('.hp span').textContent = `${p.hp} / ${p.maxHp}`;
-      $('.sg i').style.width = p.superG + '%';
-      $('.sg span').textContent = `${Math.floor(p.superG)}%`;
-      $('.orbs').innerHTML = Array.from({ length: MAX_ORBS }, (_, i) => {
-        const o = p.orbs[i];
-        return o ? `<span class="orb" style="background:${Sprites.ELEMENT_COLORS[o]};color:${Sprites.ELEMENT_COLORS[o]}" title="${ELEMENT_NAME[o]}"></span>` : '<span class="orb empty"></span>';
-      }).join('');
-      const cw = $('.cards');
-      if (!cw.children.length) {
-        for (const c of cards) {
-          const b = el(`<button class="card" data-id="${c.id}">
-            ${c.icon ? `<img src="${img(c.icon)}">` : '<canvas width="8" height="8" style="width:32px;height:32px;background:#000"></canvas>'}
-            <div><div class="cn">${esc(c.name)}</div><div class="cost">${costPips(c.cost)}</div></div></button>`);
-          if (!c.icon) { const cv = b.querySelector('canvas'); cv.getContext('2d').drawImage(B.ghostSprite, 0, 0); }
-          b.onclick = () => doAction(() => useCard(c));
-          cw.appendChild(b);
-        }
-      }
-      for (const b of cw.children) {
-        const c = cards.find(x => x.id === b.dataset.id);
-        const ok = canPay(p.orbs, c.cost);
+      $('.hp span').textContent = `${p.hp} / ${p.maxHp}${p.shield ? ` (+${p.shield})` : ''}`;
+      $('.sp i').style.width = p.superG + '%';
+      $('.sp span').textContent = p.superG >= 100 ? `▶ ${p.abil.sup?.n || 'SUPER'}` : `SUPER ${Math.floor(p.superG)}%`;
+      const sp = $('.sp');
+      sp.disabled = B.busy || !!B.done || p.superG < 100 || !p.abil.sup;
+      sp.classList.toggle('ready', p.superG >= 100 && !B.busy && !B.done);
+      const sorted = ORB_ORDER.flatMap(e => p.orbs.filter(o => o === e));
+      $('.bt-orbs').innerHTML = Array.from({ length: MAX_ORBS }, (_, i) => sorted[i]
+        ? `<span class="orb" style="background:${Sprites.ELEMENT_COLORS[sorted[i]]};color:${Sprites.ELEMENT_COLORS[sorted[i]]}"></span>`
+        : '<span class="orb empty"></span>').join('');
+      $$('.abtn[data-id]').forEach(b => {
+        const c = C[b.dataset.id];
+        const ok = c.kind === 'normal' || canPay(p.orbs, c.cost);
         b.disabled = B.busy || !!B.done || !ok;
-        b.classList.toggle('ready', ok && !B.busy);
-      }
-      $('.atk').disabled = B.busy || !!B.done;
-      const sb = $('.superbtn');
-      sb.disabled = B.busy || !!B.done || p.superG < 100 || !p.abil.sup;
-      sb.classList.toggle('ready', p.superG >= 100 && !B.busy);
+        b.classList.toggle('ready', ok && !B.busy && c.kind !== 'normal');
+      });
+      $('.ring').classList.toggle('off', B.busy || !!B.done || !p.orbs.length);
+      drawRing();
     }
-    $('.atk').onclick = () => doAction(normalAttack);
-    $('.superbtn').onclick = () => doAction(useSuper);
+    $('.sp').onclick = () => doAction(useSuper);
     $('.flee').onclick = () => { if (confirm('撤退しますか?(報酬なし)')) { B.done = 'lose'; running = false; resolveBattle({ win: false }); } };
-    canvas.addEventListener('click', ev => {
+    // Guard ring long press (timer-based so it works even when animation frames are throttled)
+    const HOLD_MS = 600;
+    let holdStart = 0, holdTimer = 0, holdRaf = 0;
+    const ringEl = $('.ring');
+    const stopHold = () => { clearTimeout(holdTimer); cancelAnimationFrame(holdRaf); holdTimer = holdRaf = 0; B.ringHold = 0; drawRing(); };
+    ringEl.addEventListener('pointerdown', ev => {
+      ev.preventDefault();
+      if (B.busy || B.done || !p.orbs.length) return;
+      holdStart = performance.now();
+      const tick = now => { B.ringHold = (now - holdStart) / HOLD_MS; drawRing(); holdRaf = requestAnimationFrame(tick); };
+      holdRaf = requestAnimationFrame(tick);
+      holdTimer = setTimeout(() => { stopHold(); doAction(guard); }, HOLD_MS);
+    });
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => ringEl.addEventListener(t, () => {
+      if (!holdTimer) return;
+      if (performance.now() - holdStart < HOLD_MS * 0.3) toast('長押しでエレメントを消費して防御');
+      stopHold();
+    }));
+    // Tap: enemy = target + attack, elsewhere = attack current target
+    canvas.addEventListener('pointerup', ev => {
       const r = canvas.getBoundingClientRect();
-      const x = (ev.clientX - r.left) / r.width * VW, y = (ev.clientY - r.top) / r.height * VH;
-      const idx = B.enemies.findIndex(e => { if (e.hp <= 0) return false; const b = spriteBox(e); return x >= b.x && x <= b.x + b.w && y >= b.y - 14 && y <= b.y + b.h; });
-      if (idx < 0) return;
-      if (idx === B.target) doAction(normalAttack); // tap the current target again = attack (Mobius style)
-      else { B.target = idx; log(`ターゲット: ${B.enemies[idx].n}(もう一度タップで攻撃)`); }
+      const x = (ev.clientX - r.left) / r.width * BW, y = (ev.clientY - r.top) / r.height * BH;
+      const idx = B.enemies.findIndex(e => { if (e.hp <= 0) return false; const b = eBox(e); return x >= b.x - 4 && x <= b.x + b.w + 4 && y >= b.y - 16 && y <= b.y + b.h + 4; });
+      if (idx >= 0) B.target = idx;
+      doAction(normalAttack);
     });
 
-    // ---- render loop ----
-    let running = true, last = performance.now();
+    // ---- render ----
+    let last = performance.now();
     function frame(now) {
       if (!running) return;
       const dt = Math.min(50, now - last); last = now; B.time += dt;
@@ -1202,106 +1396,223 @@
       g.fillStyle = bgc; g.fillRect(x, y, w, h);
       g.fillStyle = color; g.fillRect(x, y, Math.max(0, w * v), h);
     }
+    function txt(s, x, y, size, color, align = 'center') {
+      g.font = `${size}px DotGothic16, monospace`; g.textAlign = align;
+      g.fillStyle = '#000'; g.fillText(s, x + 0.6, y + 0.6);
+      g.fillStyle = color; g.fillText(s, x, y);
+    }
+    function drawEnemy(e, i, dt) {
+      if (e.hp <= 0 && e.dieT <= 0) return;
+      const b = eBox(e);
+      e.atkT = Math.max(0, e.atkT - dt / 320);
+      e.kb = Math.max(0, e.kb - dt / 220);
+      const lunge = Math.sin(e.atkT * Math.PI);
+      const grow = 1 + lunge * 0.14;
+      const w = b.w * grow, h = b.h * grow;
+      const feetY = b.y + b.h + lunge * 6 - e.kb * 3;
+      g.save();
+      if (e.dieT > 0 && e.hp <= 0) { g.globalAlpha = e.dieT; e.dieT = Math.max(0, e.dieT - dt / 600); }
+      g.fillStyle = 'rgba(0,0,0,0.35)';
+      g.beginPath(); g.ellipse(e.x, e.y + 1, w * 0.32, 3 * e.depth, 0, 0, Math.PI * 2); g.fill();
+      if (e.boss) { g.fillStyle = (e.aura || '#ffd28a') + '30'; g.beginPath(); g.ellipse(e.x, b.cy, w * 0.6, h * 0.55, 0, 0, Math.PI * 2); g.fill(); }
+      const glow = Math.floor((Math.sin(B.time / 260 + e.phase) + 1) * 1.5) % 3;
+      const spr = e.sprites[glow] || e.sprites[0];
+      const sink = e.hp <= 0 ? (1 - e.dieT) * 10 : 0;
+      Sprites.drawLive(g, spr, e.x, feetY + sink, w, h, B.time, { phase: e.phase, breath: 0.03, sway: 1.1, speed: 0.0028 });
+      if (e.hitT > 0) {
+        g.globalCompositeOperation = 'lighter'; g.globalAlpha = e.hitT * 0.75;
+        g.drawImage(spr, e.x - w / 2, feetY - h, w, h);
+        e.hitT = Math.max(0, e.hitT - dt / 180);
+      }
+      g.restore();
+      if (e.hp <= 0) return;
+      // HP / break / turn counter
+      const bw = Math.max(30, Math.min(58, w * 0.9));
+      const top = Math.max(26, b.y - 12);
+      const ux = clamp(e.x, bw / 2 + 4, BW - bw / 2 - 12);
+      txt(e.n, ux, top - 2, e.boss ? 7 : 6, e.boss ? '#ffd28a' : '#ffffff');
+      bar(ux - bw / 2, top, bw, 3, e.hp / e.maxHp, '#ff5d5d', '#300');
+      bar(ux - bw / 2, top + 4.5, bw, 2, e.broken > 0 ? 1 : e.bk / Content.enemyDef(e.key).brk, e.broken > 0 ? '#ffd84a' : Sprites.ELEMENT_COLORS[e.weak], '#111');
+      const cx = ux + bw / 2 + 6;
+      g.fillStyle = e.broken > 0 ? '#ffd84a' : e.counter <= 1 ? '#ff3b3b' : '#1c2433';
+      g.beginPath(); g.arc(cx, top + 2.5, 4.5, 0, Math.PI * 2); g.fill();
+      txt(e.broken > 0 ? 'B' : String(e.counter), cx, top + 5, 7, e.broken > 0 || e.counter <= 1 ? '#000' : '#fff');
+      if (i === B.target && !B.done) {
+        const ty = b.y + b.h * 0.45;
+        const k = (Math.sin(B.time / 160) + 1) * 2;
+        g.strokeStyle = '#ffd28a'; g.lineWidth = 1;
+        for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+          const x0 = e.x + sx * (w * 0.42 + k), y0 = ty + sy * (h * 0.42 + k);
+          g.beginPath(); g.moveTo(x0, y0 - sy * 5); g.lineTo(x0, y0); g.lineTo(x0 - sx * 5, y0); g.stroke();
+        }
+      }
+    }
+    function drawPlayer(dt) {
+      const b = pBox();
+      B.pAtkT = Math.max(0, B.pAtkT - dt / 200);
+      B.pHitT = Math.max(0, B.pHitT - dt / 400);
+      if (B.pDash > 0) B.pDash = B.pDash + dt / 320 >= 1 ? 0 : B.pDash + dt / 320;
+      if (B.pDodge > 0) B.pDodge = B.pDodge + dt / 420 >= 1 ? 0 : B.pDodge + dt / 420;
+      if (B.heldT > 0) { B.heldT -= dt; if (B.heldT <= 0) B.held = 'kin'; }
+      const recoil = Math.sin(B.pAtkT * Math.PI) * 2;
+      const sc = 1 - b.dash * 0.25;
+      g.fillStyle = 'rgba(0,0,0,0.4)';
+      g.beginPath(); g.ellipse(b.cx, PY + 1, 26, 5, 0, 0, Math.PI * 2); g.fill();
+      if (B.pDodge > 0) { g.globalAlpha = 0.35; g.drawImage(B.guardian.sprite, PX - b.w / 2, b.y, b.w, b.h); g.globalAlpha = 1; }
+      if (!(B.pHitT > 0 && Math.floor(B.time / 60) % 2)) {
+        Sprites.drawLive(g, B.guardian.sprite, b.cx, PY - b.dash * 40 + recoil, b.w * sc, b.h * sc, B.time,
+          { breath: 0.018, sway: 0.7, hem: 1.2, hemFrom: B.guardian.hem, lean: -recoil * 0.6 });
+      }
+      // Weapon in hand, aimed at the target
+      const wsp = B.weapons[B.held] || B.weapons.kin;
+      const t = B.enemies[B.target];
+      if (wsp && t && b.dash === 0) {
+        const h = handPos(), tb = eBox(t);
+        const ang = Math.atan2(tb.cy - h.y, t.x - h.x);
+        g.save();
+        g.translate(h.x, h.y + recoil);
+        g.rotate(ang);
+        const wsc = PSC * 0.85;
+        g.drawImage(wsp.sprite, -wsp.gx * wsc - recoil * 2, -wsp.gy * wsc, wsp.sprite.width * wsc, wsp.sprite.height * wsc);
+        if (B.pAtkT > 0.5) { g.fillStyle = '#fff6c0'; g.globalAlpha = B.pAtkT; g.beginPath(); g.arc((wsp.sprite.width - wsp.gx) * wsc + 2, 0, 4 + B.pAtkT * 3, 0, Math.PI * 2); g.fill(); }
+        g.restore();
+      }
+      // Ghost
+      const gy = b.y + 18 + Math.sin(B.time / 380) * 4;
+      g.drawImage(B.ghostSprite, b.x - 4, gy, 16, 16);
+      // Defensive visuals
+      const col = el => Sprites.ELEMENT_COLORS[el];
+      if (p.shield) { g.strokeStyle = col('void'); g.globalAlpha = 0.6 + Math.sin(B.time / 200) * 0.2; g.lineWidth = 1.5; g.beginPath(); g.ellipse(b.cx, b.y + b.h / 2, b.w * 0.55, b.h * 0.55, 0, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
+      if (p.buffs.armor) { g.fillStyle = (p.buffs.weave ? col('strand') : col('solar')) + '28'; g.fillRect(b.x + 6, b.y + 4, b.w - 12, b.h - 8); }
+      if (p.buffs.evadeUp && Math.random() < 0.3) burst(b.cx + rand(40) - 20, b.y + rand(b.h), col('arc'), 1, 1);
+    }
+    function drawFx(dt) {
+      B.fx = B.fx.filter(f => (f.t += dt) < f.dur);
+      for (const f of B.fx) {
+        const k = f.t / f.dur;
+        g.save();
+        if (f.type === 'beam') {
+          g.strokeStyle = f.color; g.globalAlpha = 1 - k; g.lineWidth = f.w;
+          g.beginPath(); g.moveTo(f.x0, f.y0); g.lineTo(f.x1, f.y1); g.stroke();
+        } else if (f.type === 'pt') {
+          g.fillStyle = f.color; g.globalAlpha = 1 - k;
+          g.fillRect(f.x + f.vx * f.t / 16, f.y + f.vy * f.t / 16 + 0.0025 * f.t * f.t / 16, 1.6, 1.6);
+        } else if (f.type === 'ring') {
+          g.strokeStyle = f.color; g.globalAlpha = 1 - k; g.lineWidth = 3 * (1 - k) + 0.5;
+          g.beginPath(); g.ellipse(f.x, f.y, f.r * k, f.r * k * 0.6, 0, 0, Math.PI * 2); g.stroke();
+        } else if (f.type === 'lob') {
+          const x = f.x0 + (f.x1 - f.x0) * k, y = f.y0 + (f.y1 - f.y0) * k - Math.sin(k * Math.PI) * 50;
+          g.fillStyle = f.color; g.beginPath(); g.arc(x, y, 3, 0, Math.PI * 2); g.fill();
+          g.globalAlpha = 0.4; g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2); g.fill();
+        } else if (f.type === 'slash') {
+          g.strokeStyle = f.color; g.globalAlpha = 1 - k; g.lineWidth = 3;
+          g.beginPath(); g.moveTo(f.x - 22, f.y - 16 + k * 6); g.lineTo(f.x + 22, f.y + 16 - k * 6); g.stroke();
+          g.beginPath(); g.moveTo(f.x + 22, f.y - 16 + k * 6); g.lineTo(f.x - 22, f.y + 16 - k * 6); g.stroke();
+        } else if (f.type === 'wall') {
+          const b = pBox();
+          g.fillStyle = f.color; g.globalAlpha = 0.22 + Math.sin(B.time / 180) * 0.06;
+          g.fillRect(b.cx - 44, b.y - 12, 88, 36);
+          g.globalAlpha = 0.7; g.strokeStyle = f.color; g.strokeRect(b.cx - 44, b.y - 12, 88, 36);
+        } else if (f.type === 'rift') {
+          g.strokeStyle = f.color; g.globalAlpha = (1 - k) * 0.9; g.lineWidth = 2;
+          g.beginPath(); g.ellipse(PX, PY, 40, 9, 0, 0, Math.PI * 2); g.stroke();
+          if (Math.random() < 0.5) burst(PX + rand(70) - 35, PY - rand(10), f.color, 1, 1.5);
+        } else if (f.type === 'guard') {
+          const b = pBox();
+          g.strokeStyle = f.color; g.globalAlpha = 1 - k; g.lineWidth = 3;
+          g.beginPath(); g.ellipse(b.cx, b.y + b.h / 2, b.w * 0.4 + k * 30, b.h * 0.45 + k * 30, 0, 0, Math.PI * 2); g.stroke();
+        } else if (f.type === 'charge') {
+          const h = handPos();
+          g.fillStyle = f.color; g.globalAlpha = 0.3 + k * 0.6;
+          g.beginPath(); g.arc(h.x, h.y - 4, 2 + k * 6, 0, Math.PI * 2); g.fill();
+        } else if (f.type === 'txt') {
+          const y = f.y - k * 16;
+          g.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
+          txt(f.text, f.x, y, f.big ? 12 : 8, f.color);
+        }
+        g.restore();
+      }
+    }
+    // Super cinematic: darken + speed lines + cut-in band with the guardian, then impact
+    function drawSuper(dt) {
+      const s = B.superFx;
+      if (!s) return;
+      s.t += dt;
+      const t = s.t;
+      if (t > s.dur) { B.superFx = null; return; }
+      const fadeIn = Math.min(1, t / 250), fadeOut = t > 1100 ? Math.max(0, 1 - (t - 1100) / 300) : 1;
+      g.fillStyle = `rgba(0,0,0,${0.65 * fadeIn * (t > 1250 ? Math.max(0, 1 - (t - 1250) / 500) : 1)})`;
+      g.fillRect(0, 0, BW, BH);
+      if (t < 1400) {
+        g.save();
+        g.strokeStyle = s.color; g.globalAlpha = 0.6 * fadeOut;
+        for (let i = 0; i < 28; i++) {
+          const a = (i / 28) * Math.PI * 2 + t / 900;
+          const r0 = 40 + ((t / 3 + i * 37) % 120);
+          g.lineWidth = 1 + (i % 3);
+          g.beginPath(); g.moveTo(BW / 2 + Math.cos(a) * r0, BH / 2 + Math.sin(a) * r0);
+          g.lineTo(BW / 2 + Math.cos(a) * (r0 + 40), BH / 2 + Math.sin(a) * (r0 + 40)); g.stroke();
+        }
+        g.restore();
+      }
+      if (t < 1150) {
+        // diagonal cut-in band
+        const slide = Math.min(1, t / 300);
+        g.save();
+        g.globalAlpha = fadeOut;
+        g.translate(BW / 2, BH * 0.42); g.rotate(-0.18);
+        g.fillStyle = s.color; g.fillRect(-BW, -34, BW * 2, 68);
+        g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(-BW, -30, BW * 2, 60);
+        const fs = Sprites.guardianSprite(p.cls, p.element === 'prism' ? 'prism' : p.element);
+        g.imageSmoothingEnabled = false;
+        const cx = -BW * 0.9 + slide * BW * 0.6 + (t / 1150) * 12;
+        g.drawImage(fs, cx, -48, 96, 96);
+        g.restore();
+        g.save();
+        g.globalAlpha = fadeOut;
+        txt(s.name, BW / 2 + 16 - (1 - slide) * 60, BH * 0.42 + 4, 15, '#ffffff');
+        txt('SUPER', BW / 2 + 16 - (1 - slide) * 60, BH * 0.42 - 14, 8, s.color);
+        g.restore();
+      }
+      if (t > 800 && t < 1250) {
+        // charge: particles converge to the player
+        for (let i = 0; i < 3; i++) B.fx.push({ type: 'pt', x: PX + rand(160) - 80, y: PY - 60 + rand(120) - 60, vx: 0, vy: 0, color: s.color, t: 0, dur: 250 });
+      }
+    }
     function draw(dt) {
-      g.setTransform(RS, 0, 0, RS, 0, 0);
+      g.setTransform(BRS, 0, 0, BRS, 0, 0);
       g.imageSmoothingEnabled = false;
       let sx = 0, sy = 0;
       if (B.shake > 0) { sx = (Math.random() - 0.5) * B.shake; sy = (Math.random() - 0.5) * B.shake; B.shake = Math.max(0, B.shake - dt * 0.03); }
       g.translate(sx, sy);
-      if (B.bg) g.drawImage(B.bg, 0, 0, VW, VH);
-      // ground darkening
-      const gr = g.createLinearGradient(0, VH * 0.55, 0, VH);
-      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.55)');
-      g.fillStyle = gr; g.fillRect(0, VH * 0.55, VW, VH * 0.45);
-      if (B.superFlash > 0) { g.fillStyle = `rgba(255,255,255,${B.superFlash * 0.6})`; g.fillRect(0, 0, VW, VH); B.superFlash = Math.max(0, B.superFlash - dt / 600); }
-
-      // Player
-      const bob = Math.sin(B.time / 300) * 1;
-      const lunge = B.playerAtkT > 0 ? Math.sin(B.playerAtkT * Math.PI) * 8 : 0;
-      B.playerAtkT = Math.max(0, B.playerAtkT - dt / 250);
-      g.fillStyle = 'rgba(0,0,0,0.4)'; g.fillRect(36, 148, 40, 4);
-      if (!(B.playerHitT > 0 && Math.floor(B.time / 50) % 2)) g.drawImage(B.playerSprite, 32 + lunge, 102 + bob, 48, 48);
-      B.playerHitT = Math.max(0, B.playerHitT - dt / 400);
-      if (p.buffs.barricade) { g.fillStyle = 'rgba(121,187,255,0.35)'; g.fillRect(84, 100, 6, 48); }
-      g.drawImage(B.ghostSprite, 78, 86 + Math.sin(B.time / 220) * 3, 16, 16);
-
-      // Enemies
-      B.enemies.forEach((e, i) => {
-        if (e.hp <= 0 && e.dieT <= 0) return;
-        const b = spriteBox(e);
-        const fb = Math.sin(B.time / 400 + i) * (e.tpl === 'float' || e.tpl === 'orb' || e.holo ? 2 : 0.6);
-        const ax = e.atkT > 0 ? -Math.sin(e.atkT * Math.PI) * 10 : 0;
-        e.atkT = Math.max(0, (e.atkT || 0) - dt / 300);
-        g.save();
-        if (e.dieT > 0 && e.hp <= 0) { g.globalAlpha = e.dieT; e.dieT = Math.max(0, e.dieT - dt / 500); }
-        g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(e.x - b.w * 0.35, e.y - 2, b.w * 0.7, 3);
-        if (e.boss && e.aura) { g.fillStyle = e.aura + '44'; g.fillRect(b.x - 2, b.y - 2 + fb, b.w + 4, b.h + 4); }
-        if (e.sprite) g.drawImage(e.sprite, b.x + ax, b.y + fb, b.w, b.h);
-        if (e.hitT > 0) { g.globalCompositeOperation = 'lighter'; g.globalAlpha = e.hitT * 0.8; if (e.sprite) g.drawImage(e.sprite, b.x + ax, b.y + fb, b.w, b.h); e.hitT = Math.max(0, e.hitT - dt / 200); }
-        g.restore();
-        if (e.hp <= 0) return;
-        // UI above enemy
-        const top = Math.max(18, b.y - 16);
-        const w = Math.max(36, Math.min(70, b.w));
-        const ux = clamp(e.x, w / 2 + 8, VW - w / 2 - 14); // keep labels inside the canvas
-        g.font = '6px DotGothic16, monospace'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
-        g.fillStyle = '#000'; g.fillText(e.n, ux + 0.5, top - 1.5);
-        g.fillStyle = e.boss ? '#ffd28a' : '#fff'; g.fillText(e.n, ux, top - 2);
-        bar(ux - w / 2, top, w, 3, e.hp / e.maxHp, '#ff5d5d', '#300');
-        const bkMax = Content.enemyDef(e.key).brk;
-        bar(ux - w / 2, top + 5, w, 2, e.broken > 0 ? 1 : e.bk / bkMax, e.broken > 0 ? '#ffd84a' : Sprites.ELEMENT_COLORS[e.weak], '#111');
-        // turn counter (Mobius style)
-        const cx = ux + w / 2 + 6, cy = top + 1;
-        g.fillStyle = e.broken > 0 ? '#ffd84a' : e.counter <= 1 ? '#ff3b3b' : '#1c2433';
-        g.fillRect(cx - 5, cy - 3, 10, 10);
-        g.fillStyle = e.broken > 0 || e.counter <= 1 ? '#000' : '#fff';
-        g.font = '8px DotGothic16, monospace';
-        g.fillText(e.broken > 0 ? 'B' : String(e.counter), cx, cy + 5);
-        // weak element dot
-        g.fillStyle = Sprites.ELEMENT_COLORS[e.weak]; g.fillRect(ux - w / 2 - 6, top, 4, 4);
-        if (i === B.target && !B.done) {
-          const ty = b.y + b.h + 4 + Math.sin(B.time / 150) * 1.5;
-          g.fillStyle = '#ffd28a';
-          g.beginPath(); g.moveTo(e.x, ty); g.lineTo(e.x - 4, ty + 5); g.lineTo(e.x + 4, ty + 5); g.fill();
-        }
-      });
-
-      // Effects
-      B.fx = B.fx.filter(f => (f.t += dt) < f.dur);
-      for (const f of B.fx) {
-        const k = f.t / f.dur;
-        if (f.type === 'beam') {
-          g.strokeStyle = f.color; g.globalAlpha = 1 - k; g.lineWidth = 2;
-          g.beginPath(); g.moveTo(f.x0, f.y0); g.lineTo(f.x1, f.y1); g.stroke(); g.globalAlpha = 1;
-        } else if (f.type === 'pt') {
-          g.fillStyle = f.color; g.globalAlpha = 1 - k;
-          g.fillRect(f.x + f.vx * f.t / 16, f.y + f.vy * f.t / 16 + 0.002 * f.t * f.t / 16, 2, 2); g.globalAlpha = 1;
-        } else if (f.type === 'txt') {
-          g.font = (f.big ? '11px' : '8px') + ' DotGothic16, monospace'; g.textAlign = 'center';
-          const y = f.y - k * 14;
-          g.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
-          g.fillStyle = '#000'; g.fillText(f.text, f.x + 1, y + 1);
-          g.fillStyle = f.color; g.fillText(f.text, f.x, y); g.globalAlpha = 1;
-        }
+      if (B.bg) g.drawImage(B.bg, -4, -4, BW + 8, BH + 8);
+      const gr = g.createLinearGradient(0, BH * 0.45, 0, BH);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.6)');
+      g.fillStyle = gr; g.fillRect(0, BH * 0.45, BW, BH * 0.55);
+      // enemies back-to-front, then the player in the foreground
+      B.enemies.map((e, i) => [e, i]).sort((a, b) => a[0].y - b[0].y).forEach(([e, i]) => drawEnemy(e, i, dt));
+      drawPlayer(dt);
+      drawFx(dt);
+      drawSuper(dt);
+      if (B.flash > 0) { g.fillStyle = `rgba(255,255,255,${B.flash})`; g.fillRect(-10, -10, BW + 20, BH + 20); B.flash = Math.max(0, B.flash - dt / 400); }
+      if (B.hurtT > 0) {
+        const vg = g.createRadialGradient(BW / 2, BH / 2, BH * 0.25, BW / 2, BH / 2, BH * 0.7);
+        vg.addColorStop(0, 'rgba(255,0,0,0)'); vg.addColorStop(1, `rgba(255,0,0,${B.hurtT * 0.5})`);
+        g.fillStyle = vg; g.fillRect(0, 0, BW, BH); B.hurtT = Math.max(0, B.hurtT - dt / 500);
       }
-      // Banner
       if (B.banner) {
         B.banner.t += dt;
         const k = B.banner.t / B.banner.dur;
         if (k >= 1) B.banner = null;
-        else {
-          g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, VH / 2 - 14, VW, 24);
-          g.font = '16px DotGothic16, monospace'; g.textAlign = 'center';
-          g.fillStyle = '#000'; g.fillText(B.banner.text, VW / 2 + 1, VH / 2 + 4);
-          g.fillStyle = B.banner.color; g.fillText(B.banner.text, VW / 2, VH / 2 + 3);
-        }
+        else { g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, BH * 0.36 - 14, BW, 24); txt(B.banner.text, BW / 2, BH * 0.36 + 3, 15, B.banner.color); }
       }
       g.setTransform(1, 0, 0, 1, 0, 0);
     }
 
+    if (p.gp.has('orbs')) gainOrbs(3);
     requestAnimationFrame(frame);
     updateHud();
-    log('敵をタップでターゲット、もう一度タップ(または通常攻撃)で攻撃');
+    log('画面タップで通常攻撃 / 敵タップでターゲット切替');
     await loadWave();
     B.busy = false;
     updateHud();

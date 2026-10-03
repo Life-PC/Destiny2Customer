@@ -160,6 +160,41 @@ input.txt { background: var(--panel2); border: 2px solid var(--line); color: var
 .result .drops img { width: 56px; height: 56px; border: 2px solid var(--tier5); }
 .result .drops img.t6 { border-color: var(--tier6); }
 
+
+/* ---------- battle (Mobius-style portrait) ---------- */
+.bt { position: relative; margin: 0 auto; width: min(100vw, calc(100dvh * 9 / 16)); aspect-ratio: 9 / 16; overflow: hidden; background: #000; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.bt #bc { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
+.bt-top { position: absolute; top: 0; left: 0; right: 0; padding: 4px 6px 12px; background: linear-gradient(rgba(0,0,0,0.85), transparent); pointer-events: none; }
+.bt-top button { pointer-events: auto; }
+.bt-info { display: flex; align-items: center; gap: 6px; font-size: 11px; text-shadow: 1px 1px 0 #000; }
+.bt-orbs { display: flex; gap: 3px; margin-top: 5px; justify-content: center; }
+.bt-orbs .orb { width: 4%; height: auto; aspect-ratio: 1; max-width: 15px; }
+.bt-side { position: absolute; top: 14%; display: flex; flex-direction: column; gap: 8px; width: 16%; }
+.bt-left { left: 2%; } .bt-right { right: 2%; }
+.abtn { position: relative; width: 100%; aspect-ratio: 1; padding: 0; border: 2px solid rgba(255,255,255,0.25); background: rgba(10,14,22,0.75); border-radius: 6px; overflow: hidden; }
+.abtn img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.abtn .an { position: absolute; left: 0; right: 0; bottom: 11px; font-size: 8px; text-shadow: 1px 1px 0 #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; background: rgba(0,0,0,0.5); }
+.abtn .cost { position: absolute; left: 0; right: 0; bottom: 1px; display: flex; gap: 2px; justify-content: center; font-size: 8px; color: #fff; }
+.abtn .cost i { width: 6px; height: 6px; transform: rotate(45deg); border: 1px solid #000; display: inline-block; }
+.abtn:disabled { filter: grayscale(0.85) brightness(0.55); cursor: not-allowed; }
+.abtn.ready { border-color: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.abtn.empty { background: rgba(10,14,22,0.35); border: 2px dashed rgba(255,255,255,0.15); }
+.bt-log { position: absolute; left: 20%; right: 20%; top: 9%; font-size: 10px; text-align: center; text-shadow: 1px 1px 0 #000, -1px -1px 0 #000; line-height: 1.4; pointer-events: none; }
+.bt-bottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 6px 8px 10px; display: flex; gap: 8px; align-items: flex-end; background: linear-gradient(transparent, rgba(0,0,0,0.85) 40%); }
+.bt-bars { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bt-name { font-size: 11px; text-shadow: 1px 1px 0 #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bt .bar.hp > i { background: linear-gradient(90deg, #3fbf5a, #8ef08a); }
+.bt button.bar { display: block; width: 100%; padding: 0; height: 18px; font-family: inherit; color: #fff; }
+.bt button.bar:disabled { cursor: default; }
+.bt button.bar.ready { animation: glow 0.9s ease-in-out infinite alternate; border-color: #ffd28a; cursor: pointer; }
+.ring { position: relative; width: 24%; aspect-ratio: 1; flex-shrink: 0; cursor: pointer; touch-action: none; }
+.ring canvas { width: 100%; height: 100%; display: block; }
+.ring span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; pointer-events: none; text-shadow: 1px 1px 0 #000; }
+.ring.off { opacity: 0.45; }
+.gtabs { display: flex; gap: 4px; margin-bottom: 8px; }
+.gtabs button { flex: 1; background: var(--panel2); border: 2px solid var(--line); padding: 8px 4px; font-size: 13px; color: var(--muted); }
+.gtabs button.active { border-color: var(--accent); color: var(--accent); }
+.job-card .sp canvas { width: 56px; height: 56px; }
 #toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--panel); border: 2px solid var(--accent); padding: 8px 14px; z-index: 99; opacity: 0; transition: opacity 200ms; pointer-events: none; font-size: 13px; }
 #toast.show { opacity: 1; }
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 60; display: flex; align-items: center; justify-content: center; padding: 12px; }
@@ -173,9 +208,9 @@ input.txt { background: var(--panel2); border: 2px solid var(--line); color: var
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js"></script>
-<script src="sprites.js"></script>
-<script src="content.js"></script>
-<script src="game.js"></script>
+<script src="../manifest-trim.js?v=7"></script>
+<script src="sprites.js?v=7"></script>
+<script src="content.js?v=7"></script>
+<script src="game.js?v=7"></script>
 </body>
 </html>

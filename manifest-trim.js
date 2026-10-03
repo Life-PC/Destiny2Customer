@@ -4,7 +4,7 @@
  * Output format = "compact manifest" consumed by installManifest() in index.html.
  */
 (function (root) {
-  const SCHEMA = 10; // bump when output format changes (forces browser cache rebuild)
+  const SCHEMA = 11; // bump when output format changes (forces browser cache rebuild)
 
   // Plug category for weapon "frames" (perk columns). Enhanced perks = Frames + tierType 3 (Common)
   const PLUG_CAT_FRAMES = 7906839;
@@ -168,6 +168,7 @@
       itemSets: buildItemSets(raw.itemSets),
       activities: buildActivities(raw.activities, raw.activityTypes, raw.destinations),
       misc: buildMisc(raw.items),
+      ghosts: buildGhosts(raw.items),
     };
   }
 
@@ -200,6 +201,24 @@
       if (dp.description) o.d = dp.description;
       if (dp.icon) o.icon = dp.icon;
       if (dest) o.dest = dest;
+      out.push(o);
+    }
+    return out;
+  }
+
+  // Ghost shells (itemType 24): [{ h, n, i, tt, d }] deduped by name
+  function buildGhosts(items) {
+    const out = [];
+    const seen = new Set();
+    for (const k in items) {
+      const it = items[k];
+      const dp = it.displayProperties;
+      if (it.itemType !== 24 || it.redacted || !dp || !dp.name || !dp.icon || seen.has(dp.name)) continue;
+      const tt = it.inventory && it.inventory.tierType;
+      if (tt !== 5 && tt !== 6) continue;
+      seen.add(dp.name);
+      const o = { h: it.hash, n: dp.name, i: dp.icon, tt };
+      if (it.flavorText) o.d = it.flavorText;
       out.push(o);
     }
     return out;

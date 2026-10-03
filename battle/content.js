@@ -11,39 +11,41 @@
   const CLASS_NAME = ['タイタン', 'ハンター', 'ウォーロック'];
 
   /* ---------- Enemies ----------
-   * tpl: sprite template (hum/big/float/orb) or holo (API icon path, pixelated at runtime)
+   * tpl: 32x32 pixel map (sprites.js ENEMY) or holo (API icon path, pixelated at runtime)
+   * pal: palette overrides on top of the faction palette (colors referenced from Destiny art)
    * hp/atk are base values (scaled by stage level). spd = turns between attacks.
    * brk = break gauge. weak = element whose hits break 3x faster (D2 elemental shield). */
+  const HOUSE_DEVILS = { C: '#b02a2a', c: '#6e1a1a', E: '#ff5050' };
   const ENEMIES = {
     // Hologram training enemies — images from the Bungie API (pixelated)
     holo_drone:  { n: 'ホロ・ドローン', fac: 'holo', holo: '/common/destiny2_content/icons/624dff6dc506e217c4126576c96451b8.jpg', hp: 380, atk: 40, spd: 3, brk: 30, weak: 'arc' },
     holo_brig:   { n: 'ホロ・ブリッグ', fac: 'holo', holo: '/common/destiny2_content/icons/351af3b52a13d16f74b7007006e46dc9.jpg', hp: 1100, atk: 75, spd: 4, brk: 60, weak: 'solar', scale: 1.3 },
     holo_mino:   { n: 'ホロ・ミノタウロス', fac: 'holo', holo: '/common/destiny2_content/icons/4397c7eff0751bdcd6eb17b5bde93bb1.jpg', hp: 900, atk: 70, spd: 3, brk: 50, weak: 'void', scale: 1.2 },
-    // Hive
-    thrall:   { n: 'スラル', fac: 'hive', tpl: 'hum', hp: 420, atk: 45, spd: 2, brk: 20, weak: 'solar' },
-    acolyte:  { n: 'アコライト', fac: 'hive', tpl: 'hum', hp: 620, atk: 60, spd: 3, brk: 35, weak: 'arc' },
-    knight:   { n: 'ナイト', fac: 'hive', tpl: 'big', hp: 1500, atk: 95, spd: 4, brk: 70, weak: 'solar', scale: 1.15 },
-    wizard:   { n: 'ウィザード', fac: 'hive', tpl: 'float', hp: 1200, atk: 90, spd: 3, brk: 60, weak: 'void' },
-    // Fallen
-    dreg:     { n: 'ドレッグ', fac: 'fallen', tpl: 'hum', hp: 400, atk: 45, spd: 2, brk: 20, weak: 'arc' },
-    vandal:   { n: 'ヴァンダル', fac: 'fallen', tpl: 'hum', hp: 650, atk: 65, spd: 3, brk: 35, weak: 'arc' },
-    captain:  { n: 'キャプテン', fac: 'fallen', tpl: 'big', hp: 1600, atk: 100, spd: 4, brk: 75, weak: 'arc', scale: 1.15 },
-    servitor: { n: 'サーヴィター', fac: 'fallen', tpl: 'orb', hp: 1300, atk: 80, spd: 4, brk: 60, weak: 'void' },
-    // Vex
-    goblin:   { n: 'ゴブリン', fac: 'vex', tpl: 'hum', hp: 480, atk: 50, spd: 2, brk: 25, weak: 'void' },
-    harpy:    { n: 'ハーピー', fac: 'vex', tpl: 'orb', hp: 420, atk: 55, spd: 2, brk: 20, weak: 'solar', scale: 0.8 },
-    minotaur: { n: 'ミノタウロス', fac: 'vex', tpl: 'big', hp: 1700, atk: 105, spd: 4, brk: 80, weak: 'void', scale: 1.15 },
-    hydra:    { n: 'ハイドラ', fac: 'vex', tpl: 'orb', hp: 2000, atk: 110, spd: 4, brk: 90, weak: 'arc', scale: 1.2 },
-    // Cabal
-    legionary:{ n: 'レギオネア', fac: 'cabal', tpl: 'big', hp: 800, atk: 65, spd: 3, brk: 40, weak: 'solar', scale: 0.95 },
-    phalanx:  { n: 'ファランクス', fac: 'cabal', tpl: 'big', hp: 1300, atk: 70, spd: 4, brk: 90, weak: 'arc', scale: 1.05 },
-    psion:    { n: 'サイオン', fac: 'cabal', tpl: 'hum', hp: 450, atk: 60, spd: 2, brk: 20, weak: 'void' },
-    centurion:{ n: 'センチュリオン', fac: 'cabal', tpl: 'big', hp: 1900, atk: 115, spd: 4, brk: 85, weak: 'solar', scale: 1.2 },
-    // Taken
-    t_thrall: { n: 'テイクン・スラル', fac: 'taken', tpl: 'hum', hp: 520, atk: 55, spd: 2, brk: 25, weak: 'void' },
-    t_psion:  { n: 'テイクン・サイオン', fac: 'taken', tpl: 'hum', hp: 560, atk: 70, spd: 2, brk: 25, weak: 'stasis' },
-    t_knight: { n: 'テイクン・ナイト', fac: 'taken', tpl: 'big', hp: 1800, atk: 110, spd: 4, brk: 80, weak: 'void', scale: 1.15 },
-    t_wizard: { n: 'テイクン・ウィザード', fac: 'taken', tpl: 'float', hp: 1500, atk: 105, spd: 3, brk: 70, weak: 'strand' },
+    // Hive — bone chitin, green glow
+    thrall:   { n: 'スラル', fac: 'hive', tpl: 'thrall', hp: 420, atk: 45, spd: 2, brk: 20, weak: 'solar', scale: 0.9 },
+    acolyte:  { n: 'アコライト', fac: 'hive', tpl: 'acolyte', hp: 620, atk: 60, spd: 3, brk: 35, weak: 'arc', pal: { B: '#a99a7c', b: '#6e6250', H: '#d8ccb0' } },
+    knight:   { n: 'ナイト', fac: 'hive', tpl: 'knight', hp: 1500, atk: 95, spd: 4, brk: 70, weak: 'solar', scale: 1.15, pal: { B: '#8a5a72', b: '#5c3a4c', H: '#c590ab' } },
+    wizard:   { n: 'ウィザード', fac: 'hive', tpl: 'wizard', hp: 1200, atk: 90, spd: 3, brk: 60, weak: 'void', pal: { B: '#c8b48a', b: '#8a7a58', D: '#3a2a3a', E: '#b6ff9a' } },
+    // Fallen — white plates, tan/red cloth, four arms
+    dreg:     { n: 'ドレッグ', fac: 'fallen', tpl: 'dreg', hp: 400, atk: 45, spd: 2, brk: 20, weak: 'arc', scale: 0.9 },
+    vandal:   { n: 'ヴァンダル', fac: 'fallen', tpl: 'vandal', hp: 650, atk: 65, spd: 3, brk: 35, weak: 'arc', pal: HOUSE_DEVILS },
+    captain:  { n: 'キャプテン', fac: 'fallen', tpl: 'captain', hp: 1600, atk: 100, spd: 4, brk: 75, weak: 'arc', scale: 1.15, pal: HOUSE_DEVILS },
+    servitor: { n: 'サーヴィター', fac: 'fallen', tpl: 'servitor', hp: 1300, atk: 80, spd: 4, brk: 60, weak: 'void', pal: { B: '#3a3a4c', b: '#24242f', H: '#6a6a88', D: '#120f1c', E: '#9b5cff' } },
+    // Vex — brass, milky white, red eye
+    goblin:   { n: 'ゴブリン', fac: 'vex', tpl: 'goblin', hp: 480, atk: 50, spd: 2, brk: 25, weak: 'void' },
+    harpy:    { n: 'ハーピー', fac: 'vex', tpl: 'harpy', hp: 420, atk: 55, spd: 2, brk: 20, weak: 'solar', scale: 0.85 },
+    minotaur: { n: 'ミノタウロス', fac: 'vex', tpl: 'minotaur', hp: 1700, atk: 105, spd: 4, brk: 80, weak: 'void', scale: 1.15, pal: { D: '#1f2a4a' } },
+    hydra:    { n: 'ハイドラ', fac: 'vex', tpl: 'hydra', hp: 2000, atk: 110, spd: 4, brk: 90, weak: 'arc', scale: 1.2 },
+    // Cabal (Red Legion) — heavy armor, visor glow
+    legionary:{ n: 'レギオネア', fac: 'cabal', tpl: 'legionary', hp: 800, atk: 65, spd: 3, brk: 40, weak: 'solar' },
+    phalanx:  { n: 'ファランクス', fac: 'cabal', tpl: 'phalanx', hp: 1300, atk: 70, spd: 4, brk: 90, weak: 'arc', scale: 1.05 },
+    psion:    { n: 'サイオン', fac: 'cabal', tpl: 'psion', hp: 450, atk: 60, spd: 2, brk: 20, weak: 'void', pal: { B: '#9a3a30', b: '#622420', E: '#ffe066' } },
+    centurion:{ n: 'センチュリオン', fac: 'cabal', tpl: 'centurion', hp: 1900, atk: 115, spd: 4, brk: 85, weak: 'solar', scale: 1.2, pal: { B: '#c07a2a', b: '#7e4e1a', H: '#e8b060' } },
+    // Taken — black silhouettes with white glow
+    t_thrall: { n: 'テイクン・スラル', fac: 'taken', tpl: 'thrall', hp: 520, atk: 55, spd: 2, brk: 25, weak: 'void', scale: 0.9 },
+    t_psion:  { n: 'テイクン・サイオン', fac: 'taken', tpl: 'psion', hp: 560, atk: 70, spd: 2, brk: 25, weak: 'stasis' },
+    t_knight: { n: 'テイクン・ナイト', fac: 'taken', tpl: 'knight', hp: 1800, atk: 110, spd: 4, brk: 80, weak: 'void', scale: 1.15 },
+    t_wizard: { n: 'テイクン・ウィザード', fac: 'taken', tpl: 'wizard', hp: 1500, atk: 105, spd: 3, brk: 70, weak: 'strand' },
   };
 
   // Bosses: base enemy + overrides (always scale 1.6, boss flag)
@@ -269,8 +271,38 @@
     return `${p[seed % p.length]}の${nouns[(seed >> 4) % nouns.length]}`;
   }
 
+  /* ---------- Ghost shells: passive perks (fixed per shell, exotic shells get two) ---------- */
+  const GHOST_PERKS = [
+    { id: 'hp', n: '体力 +8%' },
+    { id: 'orbs', n: '戦闘開始時エレメント +3' },
+    { id: 'glim', n: 'グリマー獲得 +25%' },
+    { id: 'super', n: 'スーパー獲得量 +15%' },
+    { id: 'heal', n: '回復量 +25%' },
+    { id: 'brk', n: 'ブレイク力 +10%' },
+    { id: 'crit', n: 'クリティカル率 +5%' },
+    { id: 'xp', n: 'ジョブ経験値 +25%' },
+  ];
+  function ghostPerksFor(hash, tt) {
+    const n = GHOST_PERKS.length;
+    const a = Number(hash) % n;
+    if (tt !== 6) return [GHOST_PERKS[a]];
+    let b = Math.floor(Number(hash) / 7) % n;
+    if (b === a) b = (a + 3) % n;
+    return [GHOST_PERKS[a], GHOST_PERKS[b]];
+  }
+
+  /* ---------- Guard ring (long press): consumed element → defensive buff ---------- */
+  const GUARD = {
+    arc:    { n: 'アーク・リフレックス', d: '回避率アップ(2ターン)' },
+    solar:  { n: 'ソーラー・アーマー', d: '被ダメージ軽減(2ターン)' },
+    void:   { n: 'ボイド・オーバーシールド', d: 'シールドを付与' },
+    stasis: { n: 'ステイシス・クリスタル', d: '被ダメージ軽減+敵の行動を遅らせる' },
+    strand: { n: 'ストランド・ウィーブ', d: '被ダメージ軽減+継続回復' },
+    light:  { n: 'ゴーストの光', d: 'HPを回復' },
+  };
+
   root.Content = {
     DT_ELEMENT, ELEMENT_NAME, CLASS_NAME, ENEMIES, BOSSES, enemyDef, STAGES, PROLOGUE, STORY,
-    SET_EFFECTS, setEffectFor, suggestJobName, jobNameFor,
+    SET_EFFECTS, setEffectFor, suggestJobName, jobNameFor, GHOST_PERKS, ghostPerksFor, GUARD,
   };
 })(window);
