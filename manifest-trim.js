@@ -4,7 +4,7 @@
  * Output format = "compact manifest" consumed by installManifest() in index.html.
  */
 (function (root) {
-  const SCHEMA = 9; // bump when output format changes (forces browser cache rebuild)
+  const SCHEMA = 10; // bump when output format changes (forces browser cache rebuild)
 
   // Plug category for weapon "frames" (perk columns). Enhanced perks = Frames + tierType 3 (Common)
   const PLUG_CAT_FRAMES = 7906839;
@@ -40,6 +40,10 @@
     if (it.itemSubType) t.is = it.itemSubType;
     if (it.classType != null) t.cl = it.classType;
     if (it.defaultDamageType) t.dt = it.defaultDamageType;
+    // Subclass element lives in talentGrid.hudDamageType (2=arc 3=solar 4=void 6=stasis 7=strand)
+    else if (it.itemType === 16 && it.talentGrid && it.talentGrid.hudDamageType) t.dt = it.talentGrid.hudDamageType;
+    // Armor series (Edge of Fate armor sets) → DestinyEquipableItemSetDefinition
+    if (it.equippingBlock && it.equippingBlock.equipableItemSetHash) t.set = it.equippingBlock.equipableItemSetHash;
     if (it.inventory && it.inventory.tierTypeName) t.ttn = it.inventory.tierTypeName;
     if (it.flavorText) t.fx = it.flavorText;
     if (it.screenshot) t.s = it.screenshot;
@@ -159,7 +163,57 @@
     // Pre-sort items (tier desc → name) so the browser doesn't have to sort 8000+ items on every filter
     const collator = new Intl.Collator('ja');
     items.sort((a, b) => ((b.tt || 0) - (a.tt || 0)) || collator.compare(a.n, b.n));
-    return { schema: SCHEMA, version, items, plugs, plugSets, statDefs, loadoutDefs };
+    return {
+      schema: SCHEMA, version, items, plugs, plugSets, statDefs, loadoutDefs,
+      itemSets: buildItemSets(raw.itemSets),
+      activities: buildActivities(raw.activities, raw.activityTypes, raw.destinations),
+      misc: buildMisc(raw.items),
+    };
+  }
+
+  // Armor series: { setHash: { n: name, items: [itemHash...] } }
+  function buildItemSets(table) {
+    const out = {};
+    for (const k in table || {}) {
+      const s = table[k];
+      const n = s.displayProperties && s.displayProperties.name;
+      if (n && s.setItems && s.setItems.length) out[k] = { n, items: s.setItems };
+    }
+    return out;
+  }
+
+  // Strikes / dungeons / raids with a real PGCR image (used as battle stages).
+  // Deduped by name. [{ h, n, d, img, icon, type, dest }]
+  const STAGE_ACTIVITY_TYPES = /ストライク|ダンジョン|レイド|ナイトフォール|Strike|Dungeon|Raid/;
+  function buildActivities(acts, types, dests) {
+    const out = [];
+    const seen = new Set();
+    for (const k in acts || {}) {
+      const a = acts[k];
+      const dp = a.displayProperties || {};
+      if (a.redacted || !dp.name || !a.pgcrImage || /placeholder/.test(a.pgcrImage)) continue;
+      const type = (types[a.activityTypeHash] && types[a.activityTypeHash].displayProperties.name) || '';
+      if (!STAGE_ACTIVITY_TYPES.test(type) || seen.has(dp.name)) continue;
+      seen.add(dp.name);
+      const dest = dests[a.destinationHash] && dests[a.destinationHash].displayProperties && dests[a.destinationHash].displayProperties.name;
+      const o = { h: a.hash, n: dp.name, img: a.pgcrImage, type };
+      if (dp.description) o.d = dp.description;
+      if (dp.icon) o.icon = dp.icon;
+      if (dest) o.dest = dest;
+      out.push(o);
+    }
+    return out;
+  }
+
+  // Misc items referenced by apps (currency etc.)
+  const MISC_ITEMS = { glimmer: 3159615086 };
+  function buildMisc(items) {
+    const out = {};
+    for (const key in MISC_ITEMS) {
+      const it = items[MISC_ITEMS[key]];
+      if (it && it.displayProperties) out[key] = { h: it.hash, n: it.displayProperties.name, i: it.displayProperties.icon };
+    }
+    return out;
   }
 
   // Component tables needed from jsonWorldComponentContentPaths
@@ -170,6 +224,10 @@
     ldName: 'DestinyLoadoutNameDefinition',
     ldIcon: 'DestinyLoadoutIconDefinition',
     ldColor: 'DestinyLoadoutColorDefinition',
+    itemSets: 'DestinyEquipableItemSetDefinition',
+    activities: 'DestinyActivityDefinition',
+    activityTypes: 'DestinyActivityTypeDefinition',
+    destinations: 'DestinyDestinationDefinition',
   };
 
   const api = { SCHEMA, PLUG_CAT_FRAMES, TABLES, trimItem, trimPlugSet, buildCompact };
