@@ -924,8 +924,6 @@ const State = {
   items: [],             // weapons + armor (trimmed, array)
   plugs: new Map(),      // plug hash -> { n, d, i, t }
   plugSets: new Map(),   // plugSet hash -> array of plug item hashes
-  sharedPlugSets: new Set(), // plugSet hashes shared by many weapon types
-  plugWeaponTypes: new Map(), // plug hash -> [itemSubType] for weapon-type-exclusive perks
   statDefs: new Map(),   // statHash -> { n, d, idx }
   loadoutNames: new Map(), // nameHash -> name
   loadoutIcons: new Map(), // iconHash -> iconImagePath
@@ -1295,8 +1293,6 @@ function installManifest(m) {
   State.items = m.items;
   State.plugs = toHashMap(m.plugs);
   State.plugSets = toHashMap(m.plugSets);
-  State.sharedPlugSets = new Set(m.plugTypes?.sets || []);
-  State.plugWeaponTypes = toHashMap(m.plugTypes?.types);
   State.statDefs = toHashMap(m.statDefs);
   State.loadoutNames = toHashMap(m.loadoutDefs?.names);
   State.loadoutIcons = toHashMap(m.loadoutDefs?.icons);
@@ -1312,25 +1308,20 @@ const PERK_SOCKET_CATEGORIES = new Set([4241085061, 3956125808]); // weapon perk
 
 // Candidate plugs for one socket of an item definition.
 // Trackers / empty placeholder sockets (plug.x) are excluded; duplicates removed.
-// In generic plug sets shared by many weapon types (State.sharedPlugSets), perks exclusive
-// to other weapon types (e.g. フルチョーク on an auto rifle) are excluded — see D2Trim.
-function socketCandidates(se, item) {
-  let hashes = null, setHash = 0;
-  if (se.rp && State.plugSets.has(se.rp)) { hashes = State.plugSets.get(se.rp); setHash = se.rp; }
-  else if (se.ps && State.plugSets.has(se.ps)) { hashes = State.plugSets.get(se.ps); setHash = se.ps; }
+function socketCandidates(se) {
+  let hashes = null;
+  if (se.rp && State.plugSets.has(se.rp)) hashes = State.plugSets.get(se.rp);
+  else if (se.ps && State.plugSets.has(se.ps)) hashes = State.plugSets.get(se.ps);
   else if (se.r) hashes = se.r;
   else if (se.s) hashes = [se.s];
   if (!hashes) return [];
-  const typeFilter = item?.is && State.sharedPlugSets.has(setHash);
   const seen = new Set();
   const out = [];
   for (const h of hashes) {
     if (seen.has(h)) continue;
     seen.add(h);
     const p = State.plugs.get(h);
-    if (!p || p.x) continue;
-    if (typeFilter && State.plugWeaponTypes.has(h) && !State.plugWeaponTypes.get(h).includes(item.is)) continue;
-    out.push(p);
+    if (p && !p.x) out.push(p);
   }
   return out;
 }
@@ -1374,7 +1365,7 @@ function getPerkColumnsForDbItem(item) {
   item.sk.forEach((se, idx) => {
     // Weapons: perk/intrinsic sockets only. Armor: all sockets (mods etc.)
     if (!isArmor && cats.length && !wantedIdx.has(idx)) return;
-    const plugs = socketCandidates(se, item);
+    const plugs = socketCandidates(se);
     if (!plugs.length) return;
     cols.push({ socketIndex: idx, kind: se.rp ? 'random' : 'curated', label: columnLabel(plugs, idx), rows: pairEnhanced(plugs) });
   });

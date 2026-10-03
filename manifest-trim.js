@@ -4,7 +4,7 @@
  * Output format = "compact manifest" consumed by installManifest() in index.html.
  */
 (function (root) {
-  const SCHEMA = 7; // bump when output format changes (forces browser cache rebuild)
+  const SCHEMA = 8; // bump when output format changes (forces browser cache rebuild)
 
   // Plug category for weapon "frames" (perk columns). Enhanced perks = Frames + tierType 3 (Common)
   const PLUG_CAT_FRAMES = 7906839;
@@ -115,8 +115,6 @@
     // Drop plug sets not referenced by any item (saves space)
     for (const k in plugSets) if (!usedSets.has(+k)) delete plugSets[k];
 
-    const plugTypes = computePlugWeaponTypes(items, plugSets, plugs);
-
     const statDefs = {};
     for (const k in raw.stats) {
       const s = raw.stats[k];
@@ -130,63 +128,7 @@
     // Pre-sort items (tier desc → name) so the browser doesn't have to sort 8000+ items on every filter
     const collator = new Intl.Collator('ja');
     items.sort((a, b) => ((b.tt || 0) - (a.tt || 0)) || collator.compare(a.n, b.n));
-    return { schema: SCHEMA, version, items, plugs, plugSets, plugTypes, statDefs, loadoutDefs };
-  }
-
-  /* Weapon-type-exclusive perks.
-   * Some plug sets are shared across many weapon types (e.g. one "barrels" set used by
-   * auto rifles, snipers, shotguns...) and contain type-exclusive perks such as
-   * フルチョーク (shotgun only). The manifest has no per-type flag (weights are all 0),
-   * so infer it: a perk's valid weapon types = types of weapons whose perk sockets use
-   * a plug set that is used by only ONE weapon type. Perks seen on few types
-   * (< GENERIC_MIN_TYPES) are treated as exclusive to those types.
-   * Enhanced perks share the result of their base perk (same name + plug category).
-   * Returns { sets: [shared plug set hashes], types: { plugHash: [itemSubType, ...] } }. */
-  const PERK_CATEGORY = 4241085061;
-  const GENERIC_MIN_TYPES = 4;    // perk seen on ≥ this many types = generic (never hidden)
-  const SHARED_SET_MIN_TYPES = 5; // plug set used by ≥ this many types ...
-  const SHARED_SET_MIN_SIZE = 5;  // ... and holding ≥ this many plugs = generic shared set (barrels, magazines...)
-  function computePlugWeaponTypes(items, plugSets, plugs) {
-    const setTypes = new Map();
-    for (const w of items) {
-      if (w.it !== 3 || !w.is || !w.sk) continue;
-      const idx = new Set();
-      for (const c of w.sc || []) if (c.h === PERK_CATEGORY) c.i.forEach(i => idx.add(i));
-      w.sk.forEach((se, i) => {
-        if (!idx.has(i)) return;
-        for (const h of [se.rp, se.ps]) {
-          if (!h || !plugSets[h]) continue;
-          if (!setTypes.has(h)) setTypes.set(h, new Set());
-          setTypes.get(h).add(w.is);
-        }
-      });
-    }
-    const key = p => `${p.n}|${p.pc || 0}`;
-    const keyTypes = new Map();
-    for (const [h, types] of setTypes) {
-      if (types.size !== 1) continue;
-      const t = types.values().next().value;
-      for (const ph of plugSets[h]) {
-        const p = plugs[ph];
-        if (!p) continue;
-        if (!keyTypes.has(key(p))) keyTypes.set(key(p), new Set());
-        keyTypes.get(key(p)).add(t);
-      }
-    }
-    // Only filter inside big generic sets; sets shared by a few types (origin traits,
-    // rocket-assisted frames' launcher barrels, ...) are intentional and left as-is.
-    const sets = [];
-    const types = {};
-    for (const [h, ts] of setTypes) {
-      if (ts.size < SHARED_SET_MIN_TYPES || plugSets[h].length < SHARED_SET_MIN_SIZE) continue;
-      sets.push(h);
-      for (const ph of plugSets[h]) {
-        const p = plugs[ph];
-        const kt = p && keyTypes.get(key(p));
-        if (kt && kt.size < GENERIC_MIN_TYPES) types[ph] = Array.from(kt).sort((a, b) => a - b);
-      }
-    }
-    return { sets: sets.sort((a, b) => a - b), types };
+    return { schema: SCHEMA, version, items, plugs, plugSets, statDefs, loadoutDefs };
   }
 
   // Component tables needed from jsonWorldComponentContentPaths
