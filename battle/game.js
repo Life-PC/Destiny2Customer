@@ -1156,7 +1156,7 @@
     const setMotion = type => { B.motion = { type, t: 0, dur: PixelArt.MOTIONS[type].dur }; };
     const eBox = e => {
       const s = e.sprites?.[0];
-      const sc = (e.holo ? 2.0 : 2.2) * e.scale * e.depth;
+      const sc = (e.holo ? 2.0 : 2.2 * 34 / (s?.width || 34)) * e.scale * e.depth; // same on-screen size for 32px/48px art
       const w = (s?.width || 32) * sc, h = (s?.height || 32) * sc;
       const bob = Sprites.FLOATING.has(e.tpl) || e.holo ? Math.sin(B.time / 500 + e.phase) * 3 - 6 : 0;
       return { x: e.x - w / 2, y: e.y - h + bob, w, h, cy: e.y - h / 2 + bob };

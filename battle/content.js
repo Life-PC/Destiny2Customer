@@ -24,7 +24,7 @@
     // Hive — bone chitin, green glow
     thrall:   { n: 'スラル', fac: 'hive', tpl: 'thrall', hp: 420, atk: 45, spd: 2, brk: 20, weak: 'solar', scale: 0.9 },
     acolyte:  { n: 'アコライト', fac: 'hive', tpl: 'acolyte', hp: 620, atk: 60, spd: 3, brk: 35, weak: 'arc', pal: { B: '#a99a7c', b: '#6e6250', H: '#d8ccb0' } },
-    knight:   { n: 'ナイト', fac: 'hive', tpl: 'knight', hp: 1500, atk: 95, spd: 4, brk: 70, weak: 'solar', scale: 1.15, pal: { B: '#8a5a72', b: '#5c3a4c', H: '#c590ab' } },
+    knight:   { n: 'ナイト', fac: 'hive', tpl: 'knight', hp: 1500, atk: 95, spd: 4, brk: 70, weak: 'solar', scale: 1.15, pal: { B: '#5a5866', b: '#3a3844', H: '#a8a69a', S: '#8a8678' } },
     wizard:   { n: 'ウィザード', fac: 'hive', tpl: 'wizard', hp: 1200, atk: 90, spd: 3, brk: 60, weak: 'void', pal: { B: '#c8b48a', b: '#8a7a58', D: '#3a2a3a', E: '#b6ff9a' } },
     // Fallen — white plates, tan/red cloth, four arms
     dreg:     { n: 'ドレッグ', fac: 'fallen', tpl: 'dreg', hp: 400, atk: 45, spd: 2, brk: 20, weak: 'arc', scale: 0.9 },

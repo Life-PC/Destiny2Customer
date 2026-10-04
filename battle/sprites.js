@@ -694,7 +694,8 @@
       S: { c: p.S }, s: { c: p.s, g: 'S' }, C: { c: p.C }, c: { c: p.c, g: 'C' }, G: { c: p.G },
       E: { c: glow ? shade(p.E, glow * 40) : p.E, glow: true }, W: { c: W, glow: true },
     };
-    return renderShaded(ENEMY[tpl] || ENEMY.thrall, mats, `e:${tpl}:${faction}:${element}:${glow}:${JSON.stringify(palOverride || {})}`, p.K || OUTLINE);
+    // 48px shape-built art (pixelart.js ENEMY_SHAPES); legacy 32px maps as fallback
+    return renderShaded(PixelArt.enemyRows(tpl) || ENEMY[tpl] || ENEMY.thrall, mats, `e:${tpl}:${faction}:${element}:${glow}:${JSON.stringify(palOverride || {})}`, p.K || OUTLINE);
   }
   function weaponSprite(subType, element) {
     const key = WEAPON_OF_SUBTYPE[subType] || 'rifle';
