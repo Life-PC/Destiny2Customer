@@ -46,7 +46,8 @@ const gptWf = () => {
   let img = refs.length ? ['r0', 0] : null;
   for (let i = 1; i < refs.length; i++) { w['b' + i] = { class_type: 'ImageBatch', inputs: { image1: img, image2: ['r' + i, 0] } }; img = ['b' + i, 0]; }
   w.g = { class_type: 'OpenAIGPTImage1', inputs: { prompt, model: opt('model', 'gpt-image-2'), quality: opt('quality', 'low'),
-    background: opt('bg', 'transparent'), size: opt('size', '1024x1536'), n: 1, seed, ...(img ? { image: img } : {}) } };
+    background: opt('bg', 'transparent'), size: opt('size', '1024x1536'), n: 1, seed,
+    ...(opt('size') === 'Custom' ? { custom_width: +opt('cw', 1536), custom_height: +opt('ch', 2048) } : {}), ...(img ? { image: img } : {}) } };
   w.s = { class_type: 'SaveImage', inputs: { images: ['g', 0], filename_prefix: 'd2mobius/' + path.basename(out, path.extname(out)) } };
   return w;
 };

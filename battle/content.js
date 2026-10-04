@@ -301,10 +301,11 @@
     light:  { n: 'ゴーストの光', d: 'HPを回復' },
   };
 
-  /* ---------- Outfit art (one-piece pose images) ----------
-   * Register drawn outfits here. Folder battle/art/outfits/<dir>/ holds idle.png (required) and
-   * shoot.png / melee.png / super.png (optional, fall back to idle). Match by class + series name,
-   * and exotic name (or '*' for any exotic). Outfits without art use the part rig in their colors. */
+  /* ---------- Outfit art (one-piece pose frames) ----------
+   * Register drawn outfits here. battle/art/outfits/<dir>/ holds {idle,shoot,melee,super}_{1,2,3}.png
+   * + meta.json, made from a pose sheet by tools/import-poses.py (template: art/templates/pose_sheet.png).
+   * Match by class + series name, and exotic name (or '*' for any exotic).
+   * Outfits without art use the part rig in their colors. */
   const OUTFIT_ART = [
     // { cl: 1, set: '雷雲', ex: '*', dir: 'hunter_raiun' },
   ];
@@ -312,7 +313,8 @@
     const a = OUTFIT_ART.find(x => x.cl === o.cl && x.set === set?.n && (x.ex === '*' || x.ex === ex?.n));
     if (!a) return null;
     const base = `art/outfits/${a.dir}/`;
-    return { idle: base + 'idle.png', shoot: base + 'shoot.png', melee: base + 'melee.png', super: base + 'super.png' };
+    const frames = pose => [1, 2, 3].map(i => `${base}${pose}_${i}.png`);
+    return { base, meta: base + 'meta.json', preview: base + 'idle_1.png', idle: frames('idle'), shoot: frames('shoot'), melee: frames('melee'), super: frames('super') };
   }
 
   root.Content = {

@@ -956,7 +956,7 @@
         <button type="button" class="side prev" ${i === 0 ? 'disabled' : ''}>Prev Card</button>
         <button type="button" class="side next" ${i === list.length - 1 ? 'disabled' : ''}>Next Card</button>`;
       const prev = m.querySelector('.outfit-prev');
-      if (oi.art?.idle) prev.innerHTML = `<img src="${oi.art.idle}" alt="${esc(oi.name)}" style="object-fit:contain">`;
+      if (oi.art?.preview) prev.innerHTML = `<img src="${oi.art.preview}" alt="${esc(oi.name)}" style="object-fit:contain">`;
       else prev.appendChild(outfitHero(o, o.cl, 'light'));
       m.querySelector('.back').onclick = () => m.remove();
       m.querySelector('.prev').onclick = () => { if (i > 0) { i--; draw(); } };
@@ -1276,12 +1276,20 @@
     try { B.slotPal = p.oi ? await Sprites.guardianSlotPal(p.cls, outfitUrls(p.oi)) : {}; }
     catch { B.slotPal = {}; }
     // One-piece outfit art (pose images) when the outfit has it; otherwise the part rig in the outfit's colors
+    // 3 frames per pose (idle loops; actions play through once), all cropped with the same box (meta.json)
     B.poseArt = null;
     if (p.oi?.art) {
       try {
-        const load = u => (u ? Sprites.loadImage(u, false) : Promise.resolve(null));
-        const [idle, shoot, melee, sup] = await Promise.all(['idle', 'shoot', 'melee', 'super'].map(k => load(p.oi.art[k])));
-        if (idle) B.poseArt = { idle, shoot: shoot || idle, melee: melee || idle, super: sup || idle };
+        const art = p.oi.art;
+        const meta = await fetch(art.meta).then(r => (r.ok ? r.json() : null)).catch(() => null);
+        const load = u => Sprites.loadImage(u, false).catch(() => null);
+        const poses = {};
+        for (const k of ['idle', 'shoot', 'melee', 'super']) poses[k] = (await Promise.all(art[k].map(load))).filter(Boolean);
+        if (poses.idle.length) {
+          for (const k of ['shoot', 'melee', 'super']) if (!poses[k].length) poses[k] = poses.idle;
+          const f0 = poses.idle[0];
+          B.poseArt = { ...poses, meta: meta || { w: f0.width, h: f0.height, footY: f0.height, cx: f0.width / 2, figH: f0.height } };
+        }
       } catch { B.poseArt = null; }
     }
     B.guardian = Sprites.guardianRig(p.cls, vis, B.slotPal); // part-based rig (animated)
@@ -1900,16 +1908,20 @@
       const blink = B.pHitT > 0 && Math.floor(B.time / 60) % 2;
       if (B.poseArt) {
         // one-piece outfit art: the pose image for the current motion, whole body moved (feet on the ground)
-        const mt = B.motion?.type;
-        const im = mt === 'shoot' ? B.poseArt.shoot : mt === 'punch' || mt === 'throw' ? B.poseArt.melee : mt === 'super' ? B.poseArt.super : B.poseArt.idle;
-        const h = 64 * PSC * 1.05, w = im.width * h / im.height;
-        const fx = b.cx + pose.dx * PSC, fy = PY + pose.dy * PSC;
+        const A = B.poseArt, M = A.meta, mt = B.motion?.type;
+        const set = mt === 'shoot' ? A.shoot : mt === 'punch' || mt === 'throw' ? A.melee : mt === 'super' ? A.super : null;
+        // action: frames 1→2→3 across the motion; idle: 1-2-3-2 loop
+        const fi = set ? Math.min(set.length - 1, Math.floor((B.motion.t / B.motion.dur) * set.length)) : [0, 1, 2, 1][Math.floor(B.time / 260) % 4] % A.idle.length;
+        const im = (set || A.idle)[fi];
+        const sc = (64 * PSC * 1.05) / M.figH;   // idle figure height → on-screen height
+        // the frames already contain the motion, so only a little extra body motion is added
+        const fx = b.cx + pose.dx * PSC * 0.35, fy = PY + Math.min(0, pose.dy) * PSC * 0.3;
         if (!blink) {
-          g.save(); g.translate(fx, fy); g.rotate(pose.lean); g.scale(1, 1 + pose.breath * 0.004);
-          g.imageSmoothingEnabled = true; g.drawImage(im, -w / 2, -h, w, h); g.imageSmoothingEnabled = false;
+          g.save(); g.translate(fx, fy); g.rotate(pose.lean * 0.3);
+          g.imageSmoothingEnabled = true; g.drawImage(im, -M.cx * sc, -M.footY * sc, M.w * sc, M.h * sc); g.imageSmoothingEnabled = false;
           g.restore();
         }
-        B.handPt = { x: fx + w * 0.38, y: fy - h * 0.58 };
+        B.handPt = { x: fx + M.figH * sc * 0.32, y: fy - M.figH * sc * 0.6 };
       } else if (!blink) B.handPt = Sprites.drawRig(g, B.guardian, ox, oy, PSC, pose, weapon);
       // Ghost
       const gy = b.y + 18 + Math.sin(B.time / 380) * 4;

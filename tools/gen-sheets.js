@@ -3,6 +3,7 @@
  *   node tools/gen-sheets.js armor <クラス> <シリーズ>        e.g. armor ハンター 雷雲
  *   node tools/gen-sheets.js weapons <名前1> [<名前2> ... up to 6]   (file names in api-images/…/武器 without extension, or a substring)
  *   node tools/gen-sheets.js ghost <名前>
+ *   node tools/gen-sheets.js poses <クラス> <シリーズ> [<エキゾチック名>]   → pose sheet for one outfit (then tools/import-poses.py)
  * Options: --quality low|medium|high (default low) --model gpt-image-2 --dry (print prompt + refs only)
  * Output: art/sheets/<type>/<name>.png  (then: python tools/pixelize.py / the rig assembler)
  * Needs COMFY_API_KEY (environment variable or .env) and ComfyUI running at 127.0.0.1:8188. */
@@ -67,6 +68,26 @@ function job() {
         + `Image 2 is the real ghost shell "${path.basename(f, '.jpg')}": reproduce its shape, colors and details on every piece.`,
     };
   }
+  if (type === 'poses') {
+    const [cls, series, exName] = names;
+    const dir = path.join(API, 'スクリーンショット', '防具', cls, series);
+    if (!fs.existsSync(dir)) throw new Error('not found: ' + dir);
+    const shots = fs.readdirSync(dir).map(f => path.join(dir, f));
+    const ex = exName ? find(path.join(API, 'スクリーンショット', '防具', cls, 'エキゾチック'), exName)[0] : null;
+    const refs = [path.join(TPL, 'pose_sheet.png'), ...shots.slice(0, ex ? 4 : 5), ...(ex ? [ex] : [])];
+    return {
+      out: path.join(ROOT, 'art', 'sheets', 'poses', `${cls}_${series}${exName ? '_' + exName : ''}.png`),
+      refs,
+      prompt: `${STYLE}
+Image 1 is the POSE TEMPLATE: 4 rows (IDLE, SHOOT, MELEE, SUPER) x 3 frames. Draw ONE guardian character in all 12 cells, `
+        + `copying each mannequin's pose, position and size exactly (same scale, feet on the same ground position, facing right in 3/4 view). `
+        + `Chibi proportions (head about 1/4 of the height), holding a hand cannon. Keep the character identical in every frame.
+`
+        + `The other images are the real armor of the "${series}" set${ex ? ` and the exotic "${path.basename(ex, '.jpg')}"` : ''} for the ${cls === 'ハンター' ? 'Hunter' : cls === 'タイタン' ? 'Titan' : 'Warlock'}: `
+        + `dress the character in exactly these armor designs, colors and materials. The black starry body in the photos is NOT part of the design (use a plain dark gray undersuit). `
+        + `No mannequin, no labels, no ground line, plain white background.`,
+    };
+  }
   throw new Error('usage: gen-sheets.js armor <クラス> <シリーズ> | weapons <名前...> | ghost <名前>');
 }
 
@@ -75,5 +96,5 @@ console.log('refs:\n  ' + j.refs.map(r => path.relative(ROOT, r)).join('\n  ') +
 if (!dry) {
   fs.mkdirSync(path.dirname(j.out), { recursive: true });
   execFileSync('node', [path.join(__dirname, 'comfy-gen.js'), j.out, j.prompt, '--engine', 'gpt', '--model', flag('model', 'gpt-image-2'),
-    '--quality', flag('quality', 'low'), '--size', '1536x1024', '--bg', 'opaque', ...j.refs.flatMap(r => ['--ref', r])], { stdio: 'inherit' });
+    '--quality', flag('quality', 'low'), '--size', type === 'poses' ? 'Custom' : '1536x1024', ...(type === 'poses' ? ['--cw', '1536', '--ch', '2048'] : []), '--bg', 'opaque', ...j.refs.flatMap(r => ['--ref', r])], { stdio: 'inherit' });
 }
