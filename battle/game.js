@@ -1312,6 +1312,8 @@
     try { return buildPlayer(); } finally { S.activeJob = prev; }
   }
   // painted job-card backgrounds per element (art/ui/job_<element>.webp, 1024x1536 with the frame)
+  const EL_ICON = new Set(['solar', 'arc', 'void', 'stasis', 'strand']);   // art/ui/el_<element>.webp
+  const icAttr = e => (EL_ICON.has(e) ? ` data-ic="${e}"` : '');
   const JOB_BG = new Set(['solar', 'arc', 'void', 'stasis', 'strand']);
   const jobBg = e => (JOB_BG.has(e) ? ` art" style="--art:url(art/ui/job_${e}.webp);` : '');
   function renderJobs2(body) {
@@ -1324,10 +1326,10 @@
     const ab = k => { const p = Data.plugs.get(view[k]); const kind = ABIL_KINDS.find(x => x.k === k); return p ? `<div class="J-ab"><img src="${img(p.i)}" alt=""><div><b>${esc(p.n)}</b><small>${kind.n}</small></div></div>` : ''; };
     const sup = Data.plugs.get(view.sup);
     body.innerHTML = `
-      <div class="J-big${jobBg(e)}" style="--c:${col}"><div class="J-bh"><span class="J-el"><i></i>${ELEMENT_NAME[e] || ''}</span><span class="stars r${view.r || 3}">${'★'.repeat(view.r || 3)}</span></div><div class="J-art"></div><b class="J-bn">${esc(view.name)}</b></div>
+      <div class="J-big${jobBg(e)}" style="--c:${col}"><div class="J-bh"><span class="J-el"${icAttr(e)}><i></i>${ELEMENT_NAME[e] || ''}</span><span class="stars r${view.r || 3}">${'★'.repeat(view.r || 3)}</span></div><div class="J-art"></div><b class="J-bn">${esc(view.name)}</b></div>
       <section class="J-list"><div class="H-ptitle big">${svgI(NAV[2][2])}JOB SELECT <small>${S.jobs.length} JOBS · ジョブを選んで装備</small></div>
         <div class="J-cards">${sorted.map(j => { const ee = subElement(Data.byHash.get(j.sub)); return `<button type="button" class="J-card ${j.id === view.id ? 'sel' : ''} ${j.id === S.activeJob ? 'act' : ''}${jobBg(ee)}" data-job="${j.id}" style="--c:${elColor(ee)}">
-          <span class="J-el"><i></i>${ELEMENT_NAME[ee] || ''}</span><span class="stars r${j.r || 3}">${'★'.repeat(j.r || 3)}</span>
+          <span class="J-el"${icAttr(ee)}><i></i>${ELEMENT_NAME[ee] || ''}</span><span class="stars r${j.r || 3}">${'★'.repeat(j.r || 3)}</span>
           <canvas data-cls="${j.cl}" data-el="${ee}"></canvas><b>${esc(j.name)}</b><small>${CLASS_NAME[j.cl]} · Lv.${j.lv}</small>${j.id === S.activeJob ? '<em>EQUIPPED</em>' : ''}</button>`; }).join('')}</div></section>
       <aside class="H-panel J-info" style="--c:${col}">
         <h2>${esc(view.name)}</h2><div class="J-sub">${CLASS_NAME[view.cl]} · ${esc(sub?.n || '')}</div>
@@ -1515,7 +1517,7 @@
       tri: '<path d="M12 3l9 16H3z"/><path d="M12 10v4"/>', skull: '<path d="M5 11a7 7 0 0 1 14 0v3l-2 2v3H7v-3l-2-2z"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
       target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>', flag: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
     };
-    const drive = ORB_ORDER.map(e => `<button type="button" class="L-gem" data-e="${e}" aria-label="${ELEMENT_NAME[e]}で防御" style="--c:${Sprites.ELEMENT_COLORS[e]}"><i></i><b>0</b></button>`).join('');
+    const drive = ORB_ORDER.map(e => `<button type="button" class="L-gem" data-e="${e}"${icAttr(e)} aria-label="${ELEMENT_NAME[e]}で防御" style="--c:${Sprites.ELEMENT_COLORS[e]}"><i></i><b>0</b></button>`).join('');
     app().innerHTML = `
       <div class="bt land">
         <canvas id="bc" width="${BW * BRS}" height="${BH * BRS}"></canvas>
@@ -2001,7 +2003,7 @@
       // elements: counts per element (top) and the element drive gems (bottom)
       const cnt = {};
       p.orbs.forEach(o => { cnt[o] = (cnt[o] || 0) + 1; });
-      $('.m-orbs').innerHTML = ORB_ORDER.map(e => `<span class="L-oc ${cnt[e] ? '' : 'zero'}" style="--c:${Sprites.ELEMENT_COLORS[e]}"><i></i><b>${cnt[e] || 0}</b></span>`).join('')
+      $('.m-orbs').innerHTML = ORB_ORDER.map(e => `<span class="L-oc ${cnt[e] ? '' : 'zero'}"${icAttr(e)} style="--c:${Sprites.ELEMENT_COLORS[e]}"><i></i><b>${cnt[e] || 0}</b></span>`).join('')
         + `<span class="L-ototal">${p.orbs.length}/${MAX_ORBS}</span>`;
       $$('.L-gem').forEach(b => { const n = cnt[b.dataset.e] || 0; b.querySelector('b').textContent = n; b.disabled = busy || !n; });
       // target / boss panel
