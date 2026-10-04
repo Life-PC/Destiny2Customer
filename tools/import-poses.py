@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cut finished pose sheets (made from art/templates/pose_base.png / pose_super.png) into game frames.
 
-    python tools/import-poses.py <base_sheet.png>  <dir>             → idle/shoot/melee_{1,2,3}.png
+    python tools/import-poses.py <base_sheet.png>  <dir>             → idle/shoot/melee/top_{1,2,3}.png
     python tools/import-poses.py <super_sheet.png> <dir> --super     → beam/orb/gun/blade/throw/slam/field_{1,2,3}.png
 
 Output: battle/art/outfits/<dir>/ + meta.json (one section per sheet).
@@ -23,7 +23,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from pixelize import remove_background  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(__file__), '..')
-ROWS = {'base': ['idle', 'shoot', 'melee'], 'super': ['beam', 'orb', 'gun', 'blade', 'throw', 'slam', 'field']}
+ROWS = {'base': ['idle', 'shoot', 'melee', 'top'], 'super': ['beam', 'orb', 'gun', 'blade', 'throw', 'slam', 'field']}
 
 
 def clean(mask, ch):
@@ -49,6 +49,8 @@ def main():
     tpl = json.load(open(os.path.join(ROOT, 'art', 'templates', 'pose_anchors.json')))
     arr = np.array(Image.open(a.sheet).convert('RGBA'))
     H, W = arr.shape[:2]
+    if kind == 'base' and H / W < 1.15:   # older 3 x 3 base sheet (no TOP row)
+        rows = rows[:3]
     cw, ch = W / 3, H / len(rows)
     k = cw / tpl['cell'][0]            # sheet cell → template cell scale (anchors are in template pixels)
     cells, names = [], []

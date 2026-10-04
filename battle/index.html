@@ -620,6 +620,11 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 .hub .T-bg img { width: 100%; height: 100%; object-fit: cover; filter: saturate(1.1) brightness(0.7); }
 .hub .T-bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 30%, transparent 30%, rgba(5,8,15,0.75) 100%), linear-gradient(0deg, rgba(5,8,15,0.85), transparent 45%); }
 .hub .T-moon { position: absolute; left: 50%; top: -38%; width: 52cqw; height: 52cqw; transform: translateX(-50%); border-radius: 50%; background: radial-gradient(circle at 40% 35%, #f4f5f7, #c9ccd3 45%, #8b8f99 75%, #4a4e57 100%); box-shadow: 0 0 6cqw rgba(200,215,255,0.35); opacity: 0.92; }
+.hub.top.fixed .T-moon { display: none; }
+.hub.top.fixed .T-bg img { filter: none; }
+.hub.top.fixed .T-bg::after { background: linear-gradient(0deg, rgba(5,8,15,0.55), transparent 30%); }
+.hub.top.fixed .T-title { top: 10%; }
+.hub.top.fixed .T-hero { left: 14%; bottom: 25%; height: 50%; }   /* feet on the rock ledge of top_bg */
 .hub .T-moon.sm { width: 34cqw; height: 34cqw; top: -22%; left: 62%; opacity: 0.55; }
 .hub .T-corner { position: absolute; left: 2.4cqw; top: 2.4cqw; font: 700 0.95cqw 'Rajdhani', sans-serif; letter-spacing: 0.4cqw; padding-bottom: 0.6cqw; border-bottom: 1px solid rgba(255,255,255,0.4); }
 .hub .T-title { position: absolute; left: 0; right: 0; top: 14%; text-align: center; }
@@ -798,10 +803,10 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js?v=25"></script>
-<script src="pixelart.js?v=25"></script>
-<script src="sprites.js?v=25"></script>
-<script src="content.js?v=25"></script>
-<script src="game.js?v=25"></script>
+<script src="../manifest-trim.js?v=26"></script>
+<script src="pixelart.js?v=26"></script>
+<script src="sprites.js?v=26"></script>
+<script src="content.js?v=26"></script>
+<script src="game.js?v=26"></script>
 </body>
 </html>

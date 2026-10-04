@@ -1208,13 +1208,25 @@
     else box.appendChild(outfitHero(o, cls, element));
   }
 
+  // TOP: the fixed title art + the outfit's TOP pose (foot up on the rock), looped like idle
+  const TOP_BG = 'art/ui/top_bg.webp';
+  function heroTopInto(box, cls, element) {
+    const o = equippedOutfit(cls);
+    const art = o ? outfitInfo(o).art : null;
+    if (!art?.top) return heroInto(box, cls, element);
+    box.innerHTML = `<img class="H-heroimg" src="${art.top[0]}" alt="">`;
+    const im = box.firstChild, seq = [0, 1, 2, 1];
+    let i = 0;
+    const t = setInterval(() => (im.isConnected ? (im.src = art.top[seq[++i % 4]]) : clearInterval(t)), 320);
+  }
+
   /* ----- TOP (title) ----- */
   function renderTop() {
     const st = S ? nextStage() : Content.STAGES[0];
     const act = activityFor(st.act);
     app().innerHTML = `
-      <div class="hub top">
-        <div class="T-bg">${act ? `<img src="${img(act.img)}" alt="">` : ''}</div>
+      <div class="hub top fixed">
+        <div class="T-bg"><img src="${TOP_BG}" alt=""></div>
         <div class="T-moon"></div>
         <div class="T-corner">DESTINY 2 × MOBIUS</div>
         <div class="T-title"><span class="T-crest">${svgI('<circle cx="12" cy="12" r="4"/><path d="M12 2v6M12 16v6"/>')}</span><h1>D 2 &nbsp;M O B I U S</h1><div class="T-sub"><i></i><b>光 の 環</b><i></i></div></div>
@@ -1224,7 +1236,11 @@
         <div class="T-ver">— v1.0</div>
       </div>`;
     const job = S ? activeJob() : null;
-    if (job) heroInto($('.T-hero'), job.cl, subElement(Data.byHash.get(job.sub)));
+    $('.T-bg img').onerror = e => {   // no title art yet → activity image + CSS moon
+      $('.hub.top').classList.remove('fixed');
+      if (act) e.target.src = img(act.img); else e.target.remove();
+    };
+    if (job) heroTopInto($('.T-hero'), job.cl, subElement(Data.byHash.get(job.sub)));
     else $('.T-hero').appendChild(spriteCanvas(Sprites.guardianSprite(1, 'solar'), 4, 'mh-hero'));
     const go = () => (S ? renderHub('home') : renderTitle());
     $('.hub.top').onclick = go;

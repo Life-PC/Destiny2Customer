@@ -80,11 +80,11 @@ function job() {
       out: path.join(ROOT, 'art', 'sheets', 'poses', `${cls}_${series}${exName ? '_' + exName : ''}${sup ? '_super' : ''}.png`),
       refs,
       prompt: `${STYLE}
-Image 1 is the POSE TEMPLATE: ${sup ? '7 rows (BEAM, ORB, GUN, BLADE, THROW, SLAM, FIELD super poses)' : '3 rows (IDLE, SHOOT, MELEE)'} x 3 frames. `
-        + `Draw ONE guardian character in all ${sup ? 21 : 9} cells, copying each mannequin's pose, position and size exactly `
+Image 1 is the POSE TEMPLATE: ${sup ? '7 rows (BEAM, ORB, GUN, BLADE, THROW, SLAM, FIELD super poses)' : '4 rows (IDLE, SHOOT, MELEE, TOP = title-screen pose with one foot up on a rock)'} x 3 frames. `
+        + `Draw ONE guardian character in all ${sup ? 21 : 12} cells, copying each mannequin's pose, position and size exactly `
         + `(same scale, feet on the same ground position, facing right in 3/4 view). Chibi proportions (head about 1/4 of the height). `
         + (sup ? `EMPTY HANDS in every frame (the red circles mark the hands; weapons and energy effects are added later by the game). `
-               : `Holding a hand cannon. `)
+               : `Holding a hand cannon (holstered in the TOP row; do NOT draw the rock under the raised foot, the red dashed line only marks its height). `)
         + `Keep the character identical in every frame.
 `
         + `The other images are the real armor of the "${series}" set${ex ? ` and the exotic "${path.basename(ex, '.jpg')}"` : ''} for the ${cls === 'ハンター' ? 'Hunter' : cls === 'タイタン' ? 'Titan' : 'Warlock'}: `
@@ -100,5 +100,5 @@ console.log('refs:\n  ' + j.refs.map(r => path.relative(ROOT, r)).join('\n  ') +
 if (!dry) {
   fs.mkdirSync(path.dirname(j.out), { recursive: true });
   execFileSync('node', [path.join(__dirname, 'comfy-gen.js'), j.out, j.prompt, '--engine', 'gpt', '--model', flag('model', 'gpt-image-2'),
-    '--quality', flag('quality', 'low'), '--size', type === 'poses' ? 'Custom' : '1536x1024', ...(type === 'poses' ? ['--cw', '1536', '--ch', args.includes('--super') ? '3584' : '1536'] : []), '--bg', 'opaque', ...j.refs.flatMap(r => ['--ref', r])], { stdio: 'inherit' });
+    '--quality', flag('quality', 'low'), '--size', type === 'poses' ? 'Custom' : '1536x1024', ...(type === 'poses' ? ['--cw', '1536', '--ch', args.includes('--super') ? '3584' : '2048'] : []), '--bg', 'opaque', ...j.refs.flatMap(r => ['--ref', r])], { stdio: 'inherit' });
 }

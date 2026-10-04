@@ -340,7 +340,7 @@
     if (!a) return null;
     const base = `art/outfits/${a.dir}/`;
     const frames = pose => [1, 2, 3].map(i => `${base}${pose}_${i}.png`);
-    return { base, meta: base + 'meta.json', preview: base + 'idle_1.png', idle: frames('idle'), shoot: frames('shoot'), melee: frames('melee'), superFrames: frames };
+    return { base, meta: base + 'meta.json', preview: base + 'idle_1.png', idle: frames('idle'), shoot: frames('shoot'), melee: frames('melee'), top: frames('top'), superFrames: frames };
   }
 
   root.Content = {

@@ -2,7 +2,8 @@
 """Pose sheet templates for one-piece outfit art (one character, facing right, 3 frames per pose).
 
     python tools/make-pose-template.py
-      → art/templates/pose_base.png   3 x 3 : IDLE (breathing loop) / SHOOT / MELEE  (sidearm in hand)
+      → art/templates/pose_base.png   3 x 4 : IDLE (breathing loop) / SHOOT / MELEE  (sidearm in hand)
+                                              / TOP (title screen: one foot up on a rock, breathing loop)
       → art/templates/pose_super.png  3 x 7 : the 7 super patterns, EMPTY hands (the game adds the Light
                                               weapon / beam / orb in the super's element color)
       → art/templates/pose_anchors.json     hand positions + forearm angles per frame (cell pixels),
@@ -88,6 +89,12 @@ def figure(d, ox, oy, p):
     if p.get('empty'):  # super frames: mark the empty hand(s) where the game adds the Light weapon / energy
         for hx, hy in ([hand] + ([far_hand] if p.get('both') else [])):
             d.ellipse((hx - 22, hy - 22, hx + 22, hy + 22), outline=MARK, width=3)
+    if p.get('step'):   # the rock under the raised foot: dashed outline only (it is in the background art)
+        sx, sy = p['step']
+        for x0 in range(int(sx) - 70, int(sx) + 70, 18):
+            d.line((ox + x0, oy + sy, ox + x0 + 10, oy + sy), fill=MARK, width=3)
+        for y0 in range(int(sy), GROUND, 18):
+            d.line((ox + sx - 70, oy + y0, ox + sx - 70, oy + min(y0 + 10, GROUND)), fill=MARK, width=3)
     if p.get('ring'):
         d.ellipse((fx - 150, fy - 24, fx + 150, fy + 24), outline=MARK, width=3)
     return {'hand': [round(hand[0] - ox, 1), round(hand[1] - oy, 1)], 'ang': an + en,
@@ -95,6 +102,8 @@ def figure(d, ox, oy, p):
             'foot': [round(fx - ox, 1), round(fy - oy, 1)]}
 
 
+# TOP pose: near foot up on a step (STEP = top of the rock, cell px), near hand resting on the raised knee, sidearm holstered
+TOP = dict(tn=78, kn=-84, tf=-4, lean=14, an=12, en=4, af=-6, ef=14, step=(FOOT_X + 78, GROUND - 40))
 BASE = [
     ('IDLE', ['breathe 1', 'breathe 2', 'breathe 3'],
      [dict(an=22, en=-8, af=-16, gun=1), dict(an=25, en=-10, af=-18, crouch=5, gun=1), dict(an=20, en=-6, af=-14, gun=1)]),
@@ -103,6 +112,8 @@ BASE = [
     ('MELEE', ['wind-up', 'strike', 'follow-through'],
      [dict(an=-55, en=95, af=20, lean=-10, dx=-10, tn=-6, tf=-14, gun=1), dict(an=88, en=0, af=-35, lean=12, dx=34, tn=32, tf=-20, kn=-10, gun=1),
       dict(an=62, en=-10, af=-20, lean=6, dx=24, tn=18, tf=-12, gun=1)]),
+    ('TOP', 'title: foot up on a rock', ['breathe 1', 'breathe 2', 'breathe 3'],
+     [dict(**TOP), dict(TOP, crouch=4, lean=TOP['lean'] + 2), dict(TOP, an=TOP['an'] - 3, af=TOP['af'] + 3)]),
 ]
 E = dict(empty=1)
 SUPER = [
