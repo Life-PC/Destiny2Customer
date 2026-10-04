@@ -603,6 +603,8 @@
       app().innerHTML = `<div class="loading err">読み込み失敗\n${esc(e.message)}</div>`;
       return;
     }
+    // web fonts first, so canvas text (battle popups / banners) never falls back to the OS font
+    await Promise.race([Promise.all(["700 16px 'Noto Sans JP'", "800 16px Cinzel", "700 16px Rajdhani", "800 16px 'Shippori Mincho'"].map(f => document.fonts.load(f))), sleep(2500)]).catch(() => {});
     loadSave();
     if (S && !S.outfits) { ensureOutfits(); save(); }
     renderTop();
@@ -2107,7 +2109,7 @@
       g.fillStyle = color; g.fillRect(x, y, Math.max(0, w * v), h);
     }
     function txt(s, x, y, size, color, align = 'center', serif = false) {
-      g.font = serif ? `800 ${size}px Cinzel, serif` : `700 ${size}px 'Noto Sans JP', sans-serif`; g.textAlign = align;
+      g.font = serif ? `800 ${size}px Cinzel, 'Shippori Mincho', serif` : `700 ${size}px 'Noto Sans JP', sans-serif`; g.textAlign = align;
       g.fillStyle = '#000'; g.fillText(s, x + 0.6, y + 0.6);
       g.fillStyle = color; g.fillText(s, x, y);
     }
