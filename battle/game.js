@@ -604,9 +604,8 @@
       return;
     }
     loadSave();
-    if (!S) return renderTitle();
-    if (!S.outfits) { ensureOutfits(); save(); }
-    renderHub('story');
+    if (S && !S.outfits) { ensureOutfits(); save(); }
+    renderTop();
   }
 
   function spriteCanvas(src, scale, cls = '') {
@@ -649,28 +648,8 @@
    * Status bar on top, a title, the screen body, and vertical tabs on the right edge:
    * QUEST (stages) / JOB (job cards) / EQUIP (deck) / GACHA (engrams) / ETC.
    * Item images in the UI are the Bungie API images; battle uses pixel art. */
-  let hubTab = 'story';
+  let hubTab = 'home';
   const TABS = [['story', 'QUEST', 'クエスト'], ['job', 'JOB', 'ジョブカード'], ['gear', 'EQUIP', '装備編成'], ['engram', 'GACHA', 'エングラム'], ['menu', 'ETC', 'メニュー']];
-  function renderHub(tab) {
-    hubTab = tab || hubTab;
-    const job = activeJob();
-    const shardTotal = Object.values(S.shards || {}).reduce((a, b) => a + b, 0);
-    app().innerHTML = `
-      <div class="mh">
-        <header class="mh-status">
-          <div><b>${esc(job.name)}</b> <span class="lv">Lv.${job.lv}</span></div>
-          <div class="r"><span class="k">グリマー</span><b id="glim">${S.glimmer.toLocaleString()}</b></div>
-          <div class="xp"><span class="k g">EXP</span><span class="bar"><i style="width:${Math.min(100, (job.xp || 0) / (job.lv * 100) * 100)}%"></i></span></div>
-          <div class="r"><span class="k v">欠片</span><b>${shardTotal.toLocaleString()}</b></div>
-        </header>
-        <div class="mh-title">${TABS.find(t => t[0] === hubTab)[2]}</div>
-        <main class="mh-body"></main>
-        <nav class="mh-nav" aria-label="メインメニュー">${TABS.map(([k, en]) => `<button type="button" data-t="${k}" class="t-${k} ${k === hubTab ? 'on' : ''}">${en}</button>`).join('')}</nav>
-      </div>`;
-    $$('.mh-nav button').forEach(b => b.onclick = () => renderHub(b.dataset.t));
-    const body = $('.mh-body');
-    ({ story: renderStory, job: renderJobs, gear: renderGear, engram: renderEngram, menu: renderMenu })[hubTab](body);
-  }
   function updateGlimmer() { const g = $('#glim'); if (g) g.textContent = S.glimmer.toLocaleString(); }
   const tierCls = (def, inv) => 'tier' + itemStars(def, inv);
   const starText = (def, inv) => '★' + itemStars(def, inv);
@@ -717,9 +696,10 @@
     return !!S.cleared[prev.id];
   }
   const FACTION = { hive: ['ハイヴ', '#5dd94a'], fallen: ['フォールン', '#79bbff'], vex: ['ベックス', '#b08d57'], cabal: ['カバル', '#9a2f2f'], taken: ['テイクン', '#e8f4ff'], holo: ['シミュレーション', '#8fe8ff'] };
-  function renderStory(body) {
+  function renderStory(body, filter = () => true) {
     body.appendChild(el(`<div class="mh-chapter">第1章 光の環</div>`));
     Content.STAGES.forEach((st, i) => {
+      if (!filter(st)) return;
       const act = activityFor(st.act);
       const open = stageUnlocked(i);
       const boss = Content.enemyDef(st.waves[st.waves.length - 1][0]);
@@ -1170,6 +1150,275 @@
       localStorage.removeItem(SAVE_KEY); S = null; renderTitle();
     };
     body.appendChild(d);
+  }
+
+  /* ===================== hub v2 (landscape, Destiny-style screens) =====================
+   * Top bar (player / currencies / settings) · screen · bottom nav HOME / MODES / JOBS / GEAR / SUMMON.
+   * Painted art (backgrounds, planets, banners) can be swapped for drawn images later; until then the
+   * Bungie API images (activity backgrounds, item screenshots) and CSS spheres stand in. */
+  const NAV = [['home', 'HOME', '<path d="M3 11l9-7 9 7v9h-6v-6H9v6H3z"/>'], ['modes', 'MODES', '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>'],
+    ['jobs', 'JOBS', '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5h6v2M3 12h18"/>'], ['gear', 'GEAR', '<path d="M12 3l8 4-8 14L4 7z"/><path d="M4 7l8 4 8-4M12 11v10"/>'],
+    ['summon', 'SUMMON', '<path d="M12 2l2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"/>']];
+  const OLD_TAB = { story: 'modes', job: 'jobs', engram: 'summon', menu: 'home' };
+  const svgI = (d, cls = '') => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round">${d}</svg>`;
+  const elColor = e => Sprites.ELEMENT_COLORS[e] || '#d8dde6';
+  const nextStage = () => Content.STAGES.find((s, i) => !s.farm && stageUnlocked(i) && !S.cleared[s.id]) || Content.STAGES.filter(s => !s.farm).pop();
+  function renderHub(tab) {
+    hubTab = OLD_TAB[tab] || tab || hubTab;
+    if (!NAV.some(n => n[0] === hubTab)) hubTab = 'home';
+    const job = activeJob();
+    const shardTotal = Object.values(S.shards || {}).reduce((a, b) => a + b, 0);
+    const xpPct = Math.min(100, (job.xp || 0) / (job.lv * 100) * 100);
+    app().innerHTML = `
+      <div class="hub">
+        <header class="H-top">
+          <span class="H-logo">${svgI('<path d="M12 3l3 6 6 1-4.5 4 1 6-5.5-3-5.5 3 1-6L3 10l6-1z"/>')}</span>
+          <div class="H-who"><b>${esc(job.name)}</b><span>${CLASS_NAME[job.cl]} · LV ${job.lv}</span><i class="H-xp"><em style="width:${xpPct}%"></em></i></div>
+          <div class="H-cur">
+            <span title="グリマー">${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}" alt="">` : ''}<b id="glim">${S.glimmer.toLocaleString()}</b><small>グリマー</small></span>
+            <span title="エレメントの欠片"><i class="H-shard"></i><b>${shardTotal.toLocaleString()}</b><small>欠片</small></span>
+            <button type="button" class="H-set" aria-label="設定">${svgI('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>')}</button>
+          </div>
+        </header>
+        <main class="H-body H-${hubTab}"></main>
+        <nav class="H-nav" aria-label="メインメニュー">${NAV.map(([k, n, ic]) => `<button type="button" data-t="${k}" class="${k === hubTab ? 'on' : ''}">${svgI(ic)}<span>${n}</span></button>`).join('')}</nav>
+      </div>`;
+    $$('.H-nav button').forEach(b => b.onclick = () => renderHub(b.dataset.t));
+    $('.H-set').onclick = openMenu;
+    const body = $('.H-body');
+    ({ home: renderHome, modes: renderModes, jobs: renderJobs2, gear: renderGear2, summon: renderSummon })[hubTab](body);
+  }
+  function openMenu() {
+    const m = el(`<div class="modal mob-modal"><div class="panel"><div class="row"><b>メニュー</b><span class="grow"></span><button type="button" class="mbtn x">閉じる</button></div><div class="mbody"></div>
+      <button type="button" class="mbtn blue imp" style="width:100%;margin-top:10px">D2 の装備を取り込む</button></div></div>`);
+    renderMenu(m.querySelector('.mbody'));
+    m.querySelector('.x').onclick = () => m.remove();
+    m.querySelector('.imp').onclick = async ev => {
+      ev.target.disabled = true; ev.target.textContent = '取り込み中...';
+      try { const n = await importFromD2(); toast(`${n} 個のアイテムを取り込みました`); m.remove(); renderHub(hubTab); }
+      catch (err) { toast('取り込み失敗: ' + err.message); ev.target.disabled = false; ev.target.textContent = 'D2 の装備を取り込む'; }
+    };
+    document.body.appendChild(m);
+  }
+  // The equipped outfit's character, filled into a container (outfit art if registered, else the colored sprite)
+  function heroInto(box, cls, element) {
+    const o = equippedOutfit(cls);
+    const art = o ? outfitInfo(o).art : null;
+    if (art?.preview) box.innerHTML = `<img class="H-heroimg" src="${art.preview}" alt="">`;
+    else box.appendChild(outfitHero(o, cls, element));
+  }
+
+  /* ----- TOP (title) ----- */
+  function renderTop() {
+    const st = S ? nextStage() : Content.STAGES[0];
+    const act = activityFor(st.act);
+    app().innerHTML = `
+      <div class="hub top">
+        <div class="T-bg">${act ? `<img src="${img(act.img)}" alt="">` : ''}</div>
+        <div class="T-moon"></div>
+        <div class="T-corner">DESTINY 2 × MOBIUS</div>
+        <div class="T-title"><span class="T-crest">${svgI('<circle cx="12" cy="12" r="4"/><path d="M12 2v6M12 16v6"/>')}</span><h1>D 2 &nbsp;M O B I U S</h1><div class="T-sub"><i></i><b>光 の 環</b><i></i></div></div>
+        <div class="T-hero"></div>
+        <button type="button" class="T-start"><i></i>TAP TO START<i></i></button>
+        ${S ? `<button type="button" class="T-news"><div class="H-ptitle">NEWS</div><div class="T-nb">${act ? `<img src="${img(act.img)}" alt="">` : ''}<div><b>${esc(st.name)}</b><small>次のクエスト · 第1章 光の環</small></div></div></button>` : ''}
+        <div class="T-ver">— v1.0</div>
+      </div>`;
+    const job = S ? activeJob() : null;
+    if (job) heroInto($('.T-hero'), job.cl, subElement(Data.byHash.get(job.sub)));
+    else $('.T-hero').appendChild(spriteCanvas(Sprites.guardianSprite(1, 'solar'), 4, 'mh-hero'));
+    const go = () => (S ? renderHub('home') : renderTitle());
+    $('.hub.top').onclick = go;
+  }
+
+  /* ----- HOME ----- */
+  function renderHome(body) {
+    const job = activeJob(), st = nextStage(), act = activityFor(st.act);
+    body.innerHTML = `
+      <div class="T-bg">${act ? `<img src="${img(act.img)}" alt="">` : ''}</div>
+      <div class="T-moon sm"></div>
+      <div class="T-title sm"><h1>D 2 &nbsp;M O B I U S</h1><div class="T-sub"><i></i><b>光 の 環</b><i></i></div></div>
+      <div class="T-hero"></div>
+      <button type="button" class="T-start H-go"><i></i>MODES<i></i></button>
+      <button type="button" class="T-news"><div class="H-ptitle">NEXT QUEST</div><div class="T-nb">${act ? `<img src="${img(act.img)}" alt="">` : ''}<div><b>${esc(st.name)}</b><small>推奨Lv ${Math.round(st.lv * 3)} · ${esc((FACTION[Content.enemyDef(st.waves[st.waves.length - 1][0]).fac] || ['?'])[0])}</small></div></div></button>`;
+    heroInto($('.T-hero', body), job.cl, subElement(Data.byHash.get(job.sub)));
+    $('.H-go', body).onclick = () => renderHub('modes');
+    $('.T-news', body).onclick = () => startStage(st);
+  }
+
+  /* ----- MODES (planet select) ----- */
+  let hubMode = 'story';
+  const MODES = [
+    { k: 'story', n: 'STORY', jp: 'ストーリー', x: 27, y: 78, c: ['#3a7bd5', '#9fd3ff', '#1b3b2a'], open: () => true, desc: '第1章「光の環」。ベックスの環に閉じ込められた戦場を巡り、光の記録を取り戻す。', filter: s => !s.farm },
+    { k: 'strike', n: 'STRIKE', jp: '周回', x: 19, y: 46, c: ['#cfd3da', '#ffffff', '#55585f'], open: () => !!S.cleared.s2, lock: '第1章 1-2 クリアで解放', desc: '強化素材と装備を集める周回ステージ。何度でも挑戦できる。', filter: s => s.farm },
+    { k: 'crucible', n: 'CRUCIBLE', jp: 'クルーシブル', x: 27, y: 17, c: ['#b5432a', '#ffb08a', '#3a120a'], open: () => false, lock: 'COMING SOON' },
+    { k: 'gambit', n: 'GAMBIT', jp: 'ギャンビット', x: 60, y: 16, c: ['#2a8a5a', '#c4ffd9', '#5a1a1a'], open: () => false, lock: 'COMING SOON' },
+    { k: 'raid', n: 'RAID', jp: 'レイド', x: 78, y: 44, c: ['#6a3fc8', '#d6b8ff', '#1a1040'], open: () => false, lock: 'COMING SOON' },
+    { k: 'event', n: 'EVENT', jp: 'イベント', x: 66, y: 80, c: ['#7aa8d8', '#ffffff', '#2a3a5a'], open: () => false, lock: 'COMING SOON' },
+  ];
+  function renderModes(body) {
+    const sel = MODES.find(m => m.k === hubMode) || MODES[0];
+    const stages = sel.filter ? Content.STAGES.filter(sel.filter) : [];
+    const rec = stages.length ? (stages.find(s => !S.cleared[s.id]) || stages[stages.length - 1]) : null;
+    body.innerHTML = `
+      <div class="H-stars"></div>
+      <div class="H-ptitle big">${svgI(NAV[1][2])}MODE SELECT</div>
+      <div class="M-orbit"><i class="o1"></i><i class="o2"></i>
+        <div class="M-traveler"><span>THE TRAVELER</span></div>
+        ${MODES.map(m => `<button type="button" class="M-planet ${m.k === sel.k ? 'sel' : ''} ${m.open() ? '' : 'locked'}" data-k="${m.k}" style="left:${m.x}%;top:${m.y}%;--a:${m.c[0]};--b:${m.c[1]};--d:${m.c[2]}">
+          <i></i><b>${m.n}</b><small>${m.open() ? m.jp : m.lock}</small></button>`).join('')}
+      </div>
+      <aside class="H-panel M-info">
+        <div class="M-tag">${sel.open() ? 'AVAILABLE' : 'LOCKED'}</div>
+        <h2>${sel.n}</h2><div class="M-jp">${sel.jp}</div>
+        <p>${esc(sel.desc || sel.lock || '')}</p>
+        ${rec ? `<div class="M-k">RECOMMENDED LEVEL</div><div class="M-pow">◆ ${Math.round(rec.lv * 3)}</div>
+        <div class="M-k">NEXT</div><div class="M-next">${esc(rec.name)}</div>
+        <div class="M-k">REWARDS</div><div class="M-rew">
+          ${Data.glimmerIcon ? `<span><img src="${img(Data.glimmerIcon)}" alt=""><small>グリマー</small></span>` : ''}
+          <span><i class="H-shard"></i><small>欠片</small></span>
+          <span><i class="M-drop"></i><small>${esc(dropTable(rec).label)}</small></span></div>` : ''}
+        <button type="button" class="H-launch" ${sel.open() ? '' : 'disabled'}>${svgI('<path d="M5 19L19 5M9 5h10v10"/>')}LAUNCH</button>
+      </aside>`;
+    $$('.M-planet', body).forEach(b => b.onclick = () => { hubMode = b.dataset.k; renderHub('modes'); });
+    $('.H-launch', body).onclick = () => openQuestList(sel);
+  }
+  function openQuestList(mode) {
+    const m = el(`<div class="modal mob-modal H-quests"><div class="panel"><div class="row"><b>${mode.n} · ${esc(mode.jp)}</b><span class="grow"></span><button type="button" class="mbtn x">BACK</button></div><div class="qlist"></div></div></div>`);
+    renderStory(m.querySelector('.qlist'), mode.filter);
+    m.querySelector('.x').onclick = () => m.remove();
+    $$('.go', m).forEach(b => b.addEventListener('click', () => m.remove()));
+    document.body.appendChild(m);
+  }
+
+  /* ----- JOBS ----- */
+  function jobStats(job) {
+    const prev = S.activeJob; S.activeJob = job.id;
+    try { return buildPlayer(); } finally { S.activeJob = prev; }
+  }
+  function renderJobs2(body) {
+    const sorted = [...S.jobs].sort((a, b) => (b.r || 3) - (a.r || 3) || b.lv - a.lv);
+    const view = jobById(viewJobId) || activeJob();
+    viewJobId = view.id;
+    const sub = Data.byHash.get(view.sub), e = subElement(sub), col = elColor(e);
+    const ps = jobStats(view);
+    const statBar = (k, v, max) => `<div class="J-st"><span>${k}</span><i><em style="width:${Math.min(100, v / max * 100)}%"></em></i><b>${v.toLocaleString()}</b></div>`;
+    const ab = k => { const p = Data.plugs.get(view[k]); const kind = ABIL_KINDS.find(x => x.k === k); return p ? `<div class="J-ab"><img src="${img(p.i)}" alt=""><div><b>${esc(p.n)}</b><small>${kind.n}</small></div></div>` : ''; };
+    const sup = Data.plugs.get(view.sup);
+    body.innerHTML = `
+      <div class="J-big" style="--c:${col}"><div class="J-bh"><span class="J-el"><i></i>${ELEMENT_NAME[e] || ''}</span><span class="stars r${view.r || 3}">${'★'.repeat(view.r || 3)}</span></div><div class="J-art"></div><b class="J-bn">${esc(view.name)}</b></div>
+      <section class="J-list"><div class="H-ptitle big">${svgI(NAV[2][2])}JOB SELECT <small>${S.jobs.length} JOBS · ジョブを選んで装備</small></div>
+        <div class="J-cards">${sorted.map(j => { const ee = subElement(Data.byHash.get(j.sub)); return `<button type="button" class="J-card ${j.id === view.id ? 'sel' : ''} ${j.id === S.activeJob ? 'act' : ''}" data-job="${j.id}" style="--c:${elColor(ee)}">
+          <span class="J-el"><i></i>${ELEMENT_NAME[ee] || ''}</span><span class="stars r${j.r || 3}">${'★'.repeat(j.r || 3)}</span>
+          <canvas data-cls="${j.cl}" data-el="${ee}"></canvas><b>${esc(j.name)}</b><small>${CLASS_NAME[j.cl]} · Lv.${j.lv}</small>${j.id === S.activeJob ? '<em>EQUIPPED</em>' : ''}</button>`; }).join('')}</div></section>
+      <aside class="H-panel J-info" style="--c:${col}">
+        <h2>${esc(view.name)}</h2><div class="J-sub">${CLASS_NAME[view.cl]} · ${esc(sub?.n || '')}</div>
+        <div class="H-k">JOB STATS</div>
+        ${statBar('HP', ps.maxHp, 4000)}${statBar('ATTACK', ps.atk, 600)}${statBar('BREAK', Math.round(ps.brkMult * 100), 200)}${statBar('CRIT', Math.round(ps.crit * 100), 50)}
+        <div class="H-k">ABILITIES</div><div class="J-abs">${['gre', 'mel', 'cls', 'mov'].map(ab).join('')}</div>
+        <div class="H-k">SUPER</div>${sup ? `<div class="J-sup"><img src="${img(sup.i)}" alt=""><div><b>${esc(sup.n)}</b><small>${esc((sup.d || '').slice(0, 60))}</small></div></div>` : ''}
+        <div class="J-lv"><span>JOB LEVEL Lv.${view.lv}</span><b>${view.xp || 0} / ${view.lv * 100}</b><i><em style="width:${Math.min(100, (view.xp || 0) / (view.lv * 100) * 100)}%"></em></i></div>
+        <div class="J-btns">${view.id === S.activeJob ? '<span class="H-btn on">EQUIPPED</span>' : '<button type="button" class="H-btn gold use">EQUIP JOB</button>'}
+          <button type="button" class="H-btn sp">スキルパネル</button><button type="button" class="H-btn info">詳細</button></div>
+      </aside>`;
+    paintJobCanvases(body);
+    $('.J-art', body).appendChild(outfitHero(equippedOutfit(view.cl), view.cl, e));
+    $$('.J-card', body).forEach(c => c.onclick = () => { viewJobId = c.dataset.job; renderHub('jobs'); });
+    $('.use', body)?.addEventListener('click', () => { S.activeJob = view.id; save(); renderHub('jobs'); });
+    $('.sp', body).onclick = () => openSkillPanel(view);
+    $('.info', body).onclick = () => openJobDetail(view);
+  }
+
+  /* ----- GEAR (loadout) ----- */
+  let gearSel = null;
+  function renderGear2(body) {
+    const job = activeJob(), cls = job.cl;
+    const p = buildPlayer(), items = p.items, oi = p.oi, outfit = p.outfit;
+    const sub = Data.byHash.get(job.sub), e = subElement(sub);
+    const ginv = invById(S.ghost), gdef = ginv && Data.ghostByHash.get(ginv.h);
+    const tierName = d => TIER[d?.tt]?.n || '';
+    const wRow = k => { const x = items[k]; return `<button type="button" class="G-row ${x ? 'tier' + itemStars(x.def, x.inv) : 'empty'}" data-slot="${k}">
+        <span class="G-ic">${x ? `<img src="${img(x.def.i)}" alt="">` : '+'}</span><div><small>${SLOT_NAME[k]}</small><b>${x ? esc(x.def.n) : '未装備'}</b><em>${x ? `${esc(tierName(x.def))} ${esc(x.def.t || '')}` : ''}</em></div></button>`; };
+    const pieces = oi ? ARMOR_SLOTS.map(sl => oi.pieces[sl]).filter(Boolean) : [];
+    gearSel = pieces.find(d => d.h === gearSel?.h) || oi?.ex || pieces[0] || null;
+    const aRow = d => `<button type="button" class="G-row tier${d.tt === 6 ? 5 : 4} ${d === gearSel ? 'sel' : ''}" data-piece="${d.h}">
+        <span class="G-ic"><img src="${img(d.i)}" alt=""></span><div><small>${SLOT_NAME[SLOT_OF_BUCKET[d.bk]]}</small><b>${esc(d.n)}</b><em>${esc(tierName(d))} ${esc(d.t || '')}</em></div></button>`;
+    const power = Math.round(p.maxHp / 10 + p.atk * 4);
+    const st = Object.keys(STAT);
+    body.innerHTML = `
+      <div class="G-head"><div class="H-ptitle big">${svgI(NAV[3][2])}GEAR / LOADOUT</div><small>${CLASS_NAME[cls]} // ${esc(job.name)} // <span style="color:${elColor(e)}">${ELEMENT_NAME[e] || ''}</span></small></div>
+      <section class="G-wpn"><div class="H-k">WEAPONS</div>${['kin', 'ene', 'pow'].map(wRow).join('')}</section>
+      <div class="G-hero"><div class="G-char"></div>${gdef ? `<img class="G-ghost" src="${img(gdef.i)}" alt="">` : ''}</div>
+      <div class="G-ghostrow"><button type="button" class="G-row ${gdef ? 'tier' + (gdef.tt === 6 ? 5 : 4) : 'empty'}" data-slot="ghost"><span class="G-ic">${gdef ? `<img src="${img(gdef.i)}" alt="">` : '+'}</span><div><small>ゴースト</small><b>${gdef ? esc(gdef.n) : '未装備'}</b><em>${gdef ? esc(Content.ghostPerksFor(gdef.h, gdef.tt).map(q => q.n).join(' / ')) : ''}</em></div></button></div>
+      <section class="G-arm"><div class="H-k">ARMOR <small>${oi ? esc(oi.name) : '衣装なし'}</small></div>${pieces.map(aRow).join('') || '<div class="muted">衣装を装備してください</div>'}</section>
+      <aside class="H-panel G-detail">${gearSel ? `
+        <div class="G-dh tier${gearSel.tt === 6 ? 5 : 4}"><img src="${img(gearSel.i)}" alt=""><div><b>${esc(gearSel.n)}</b><small>${SLOT_NAME[SLOT_OF_BUCKET[gearSel.bk]]}</small></div><em>${esc(tierName(gearSel))}</em></div>
+        <div class="G-dpow">◆ ${power.toLocaleString()} <small>衣装 ★${oi.stars}${outfit.lb ? ` +${outfit.lb}` : ''}</small></div>
+        ${gearSel.fx ? `<div class="G-perk"><b>${gearSel.tt === 6 ? 'エキゾチック' : '説明'}</b><p>${esc(gearSel.fx)}</p></div>` : ''}
+        ${oi.effect ? `<div class="G-perk"><b>シリーズ「${esc(oi.set.n)}」</b><p>${esc(oi.effect.n)}(常に発動)</p></div>` : ''}
+        <div class="G-dbtn"><button type="button" class="H-btn chg">衣装を変更</button><button type="button" class="H-btn det">詳細</button></div>` : '<button type="button" class="H-btn chg">衣装を装備</button>'}</aside>
+      <section class="H-panel G-stats">${st.map(k => `<div class="J-st"><span>${STAT_LABEL[k]}</span><i><em style="width:${Math.min(100, p.stats[k] / 60 * 100)}%"></em></i><b>${p.stats[k]}</b></div>`).join('')}
+        <div class="G-pow"><small>POWER</small><b>◆ ${power.toLocaleString()}</b></div></section>`;
+    heroInto($('.G-char', body), cls, e);
+    $$('[data-slot]', body).forEach(b => b.onclick = () => (b.dataset.slot === 'ghost' ? openGhostPicker() : openPicker(cls, b.dataset.slot)));
+    $$('[data-piece]', body).forEach(b => b.onclick = () => { gearSel = Data.byHash.get(+b.dataset.piece); renderHub('gear'); });
+    $('.chg', body).onclick = () => openOutfitPicker(cls);
+    $('.det', body)?.addEventListener('click', () => openOutfitDetail([outfit], 0, null));
+  }
+
+  /* ----- SUMMON ----- */
+  const GACHA_RATES = { job: [[5, 10], [4, 30], [3, 60]], armor: [[5, 10], [4, 30], [3, 60]], weapon: [[5, 3], [4, 17], [3, 35], [2, 45]], ghost: [[5, 15], [4, 85]] };
+  const RATE_NAME = { 5: 'エキゾチック ★5', 4: 'レジェンダリー ★4', 3: 'レア ★3', 2: 'コモン ★2' };
+  const daySeed = () => Math.floor(Date.now() / 86400000);
+  function featured(tab, n = 3) {
+    const pool = tab === 'weapon' ? ['kin', 'ene', 'pow'].flatMap(sl => (Data.pool[sl] || []).filter(d => d.tt === 6))
+      : tab === 'armor' ? ARMOR_SLOTS.flatMap(sl => (Data.pool[sl] || []).filter(d => d.tt === 6))
+      : tab === 'ghost' ? Data.ghosts.filter(gh => gh.tt === 6) : Data.subclasses;
+    if (!pool.length) return [];
+    const seed = daySeed();
+    return Array.from({ length: Math.min(n, pool.length) }, (_, i) => pool[(seed * 7919 + i * 104729) % pool.length]);
+  }
+  function doPull(tab, n) {
+    const G = GACHA[tab];
+    const cost = n === 10 ? G.cost * 9 : G.cost;
+    if (S.glimmer < cost) { toast('グリマーが足りません — クエストをクリアして集めましょう'); return; }
+    S.glimmer -= cost;
+    const results = [];
+    for (let i = 0; i < n; i++) {
+      const last = n === 10 && i === 9;
+      if (tab === 'job') { const r = last ? rollRarity(4) : rollRarity(); results.push({ job: grantJob(rollJob(rand(3), r)), r }); continue; }
+      if (tab === 'armor') { const o = rollOutfit(rand(3), last ? rollRarity(4) : rollRarity()); if (o) results.push(grantOutfit(o)); continue; }
+      const it = rollGearItem(tab, false, last ? 4 : 0);
+      if (it) results.push(grantItem(it, 'gacha'));
+    }
+    const bonusEl = pick(Object.keys(SHARD_NAME)), bonus = n === 10 ? 10 : 1;
+    S.shards ||= {}; S.shards[bonusEl] = (S.shards[bonusEl] || 0) + bonus;
+    save(); updateGlimmer();
+    showGachaResult(results, { el: bonusEl, n: bonus });
+  }
+  function renderSummon(body) {
+    if (!GACHA[gachaTab]) gachaTab = 'job';
+    const G = GACHA[gachaTab];
+    const feat = featured(gachaTab);
+    const hero = feat[0];
+    const art = hero ? (hero.s || hero.i) : null;
+    const cats = [['armor', 'OUTFIT', '衣装'], ['weapon', 'WEAPON', '武器'], ['job', 'JOB', 'ジョブ'], ['ghost', 'GHOST', 'ゴースト']];
+    body.innerHTML = `
+      <div class="S-head"><div class="H-ptitle big">${svgI(NAV[4][2])}SUMMON</div><small>グリマーのみで解読(課金なし)</small></div>
+      <section class="S-cats">${cats.map(([k, en, jp]) => { const f = featured(k, 1)[0]; return `<button type="button" class="S-cat ${k === gachaTab ? 'on' : ''}" data-k="${k}">
+        <span class="S-ci">${f ? `<img src="${img(f.i)}" alt="">` : ''}</span><b>${en}<small>${jp}・エングラム</small></b><i>›</i></button>`; }).join('')}</section>
+      <section class="S-banner">${art ? `<img src="${img(art)}" alt="">` : ''}<div class="S-shade"></div>
+        <div class="S-bt"><small>FEATURED</small><h2>${esc(G.n)}・エングラム</h2><p>${esc(G.desc)}</p></div>
+        ${hero ? `<div class="S-fh"><b>${esc(hero.n)}</b><small>${esc(hero.t || (gachaTab === 'ghost' ? 'エキゾチック・ゴースト' : gachaTab === 'job' ? 'サブクラス' : 'エキゾチック'))}</small></div>` : ''}
+      </section>
+      <div class="S-pulls"><button type="button" class="S-pull p1"><b>SUMMON ×1</b><span>${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}" alt="">` : ''}${G.cost.toLocaleString()}</span></button>
+        <button type="button" class="S-pull gold p10"><b>SUMMON ×10</b><span>${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}" alt="">` : ''}${(G.cost * 9).toLocaleString()}</span></button></div>
+      <aside class="S-side"><div class="H-k">DROP RATES</div>
+        ${GACHA_RATES[gachaTab].map(([r, pct]) => `<div class="S-rate tier${r}"><i></i><span>${RATE_NAME[r]}</span><b>${pct.toFixed(1)}%</b></div>`).join('')}
+        <div class="H-k">GUARANTEE</div><div class="S-pity">10回解読で ${gachaTab === 'weapon' ? '★3' : gachaTab === 'ghost' ? '★4' : '★4'} 以上が1つ確定</div>
+        <div class="H-k">FEATURED ITEMS</div><div class="S-feat">${feat.map(f => `<span class="tier5"><img src="${img(f.i)}" alt=""><small>${esc(f.n)}</small></span>`).join('')}</div></aside>`;
+    $$('.S-cat', body).forEach(b => b.onclick = () => { gachaTab = b.dataset.k; renderHub('summon'); });
+    $('.p1', body).onclick = () => doPull(gachaTab, 1);
+    $('.p10', body).onclick = () => doPull(gachaTab, 10);
   }
 
   /* ----- result ----- */
