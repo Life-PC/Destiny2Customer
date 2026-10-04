@@ -952,23 +952,30 @@
       pAtkT: 0, pHitT: 0, pDash: 0, pDodge: 0, held: 'kin', heldT: 0, superFx: null, ringHold: 0,
     };
     app().innerHTML = `
-      <div class="bt">
+      <div class="bt mob">
         <canvas id="bc" width="${BW * BRS}" height="${BH * BRS}"></canvas>
-        <div class="bt-top">
-          <div class="bt-info"><span class="stg">${esc(st.no)} ${esc(st.name)}</span><span class="grow"></span><span class="wv"></span><button class="pbtn small flee"><span class="ms" style="font-size:16px">logout</span>撤退</button></div>
-          <div class="bt-orbs"></div>
+        <div class="m-top">
+          <div class="m-score"><span class="lbl">SCORE</span><b class="score">0</b><span class="lbl">BATTLE</span><b class="wv">1/${st.waves.length}</b></div>
+          <div class="m-scoreadd"></div>
+          <button type="button" class="m-help">HELP</button>
         </div>
+        <div class="m-orbs"></div>
+        <div class="m-target"><div class="m-tbar"><div class="m-dots"></div><div class="m-brk"><i></i></div></div><b class="m-cnt">-</b></div>
+        <div class="m-tinfo"></div>
         <div class="bt-side bt-left"></div>
         <div class="bt-side bt-right"></div>
         <div class="bt-log"></div>
-        <div class="bt-bottom">
-          <div class="bt-bars">
-            <div class="bt-name"><span class="stars r${p.job.r || 3}">${'★'.repeat(p.job.r || 3)}</span> ${esc(p.job.name)} <span class="muted">Lv.${p.lv}</span></div>
-            <div class="bar hp"><i></i><span></span></div>
-            <button class="bar super sp"><i></i><span></span></button>
-          </div>
-          <div class="ring"><canvas width="192" height="192"></canvas><span>GUARD</span></div>
+        <div class="m-shade"></div>
+        <div class="m-banner"><span></span></div>
+        <div class="m-buffs"></div>
+        <div class="m-hp">
+          <div class="m-hprow"><span class="m-hpl">HP</span><span class="m-hpv"></span></div>
+          <div class="m-hpbar"><i></i></div>
+          <div class="m-sprow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg><div class="m-spbar"><i></i></div></div>
         </div>
+        <button type="button" class="m-super sp" aria-label="スーパー"><span>SUPER</span></button>
+        <div class="m-btns"><button type="button" class="m-tv">TARGET<br>VIEW</button><button type="button" class="m-auto">FULL<br>AUTO</button></div>
+        <div class="ring"><canvas width="192" height="192"></canvas><span>GUARD</span></div>
       </div>`;
     const canvas = $('#bc');
     const g = canvas.getContext('2d');
@@ -989,7 +996,7 @@
 
     // ---- geometry ----
     // Player on the lower left facing right, enemies on the right (Mobius-style diagonal)
-    const PX = 58, PY = 286, PSC = 1.9; // player feet + sprite scale
+    const PX = 50, PY = 268, PSC = 1.75; // player feet + sprite scale (64px art)
     const pBox = () => {
       const s = B.guardian.sprite;
       const w = s.width * PSC, h = s.height * PSC;
@@ -1001,13 +1008,21 @@
     const handPos = () => { const b = pBox(); const [hx, hy] = B.guardian.hand; return { x: b.x + hx * PSC, y: b.y + hy * PSC }; };
     const eBox = e => {
       const s = e.sprites?.[0];
-      const sc = (e.holo ? 1.7 : 1.6) * e.scale * e.depth;
+      const sc = (e.holo ? 2.0 : 2.2) * e.scale * e.depth;
       const w = (s?.width || 32) * sc, h = (s?.height || 32) * sc;
       const bob = Sprites.FLOATING.has(e.tpl) || e.holo ? Math.sin(B.time / 500 + e.phase) * 3 - 6 : 0;
       return { x: e.x - w / 2, y: e.y - h + bob, w, h, cy: e.y - h / 2 + bob };
     };
 
     const log = msg => { B.log.push(msg); B.log = B.log.slice(-2); $('.bt-log').innerHTML = B.log.map(esc).join('<br>'); };
+    let bannerT = 0;
+    // Brush-stroke banner above the HP bar with the action name (Mobius style)
+    const banner = text => {
+      const el = $('.m-banner');
+      el.querySelector('span').textContent = text;
+      el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+      clearTimeout(bannerT); bannerT = setTimeout(() => el.classList.remove('show'), 1600);
+    };
     const popup = (x, y, text, color, big) => B.fx.push({ type: 'txt', x, y, text, color, t: 0, dur: 1000, big });
     const tracer = (x0, y0, x1, y1, color, w = 1.5) => B.fx.push({ type: 'beam', x0, y0, x1, y1, color, w, t: 0, dur: 180 });
     const burst = (x, y, color, n = 10, sp = 2.5) => { for (let i = 0; i < n; i++) B.fx.push({ type: 'pt', x, y, vx: (Math.random() - 0.5) * sp, vy: -Math.random() * sp, color, t: 0, dur: 450 + rand(350) }); };
@@ -1027,7 +1042,7 @@
         }
       }));
       B.target = Math.max(0, B.enemies.findIndex(e => e.boss));
-      $('.wv').textContent = `BATTLE ${B.wave + 1}/${st.waves.length}`;
+      $('.wv').textContent = `${B.wave + 1}/${st.waves.length}`;
       const boss = B.enemies.some(e => e.boss);
       B.banner = { text: boss ? 'WARNING' : `BATTLE ${B.wave + 1}`, t: 0, dur: 1100, color: boss ? '#ff4d4d' : '#ffd28a' };
       await sleep(900);
@@ -1035,14 +1050,14 @@
     function layoutEnemies() {
       const n = B.enemies.length;
       const boss = B.enemies.findIndex(e => e.boss);
-      const slots = n === 1 ? [[120, 214]] : n === 2 ? [[104, 186], [140, 224]] : [[98, 176], [144, 198], [114, 236]];
+      const slots = n === 1 ? [[116, 162]] : n === 2 ? [[98, 146], [142, 176]] : [[92, 134], [146, 150], [114, 182]];
       let order = B.enemies.map((e, i) => i);
       if (boss >= 0 && n === 3) { order = order.filter(i => i !== boss); order.splice(1, 0, boss); }
       order.forEach((ei, si) => {
         const e = B.enemies[ei];
         const [x, y] = slots[si];
-        e.x = x; e.y = y; e.depth = 0.82 + (y - 176) / 130;
-        const halfW = 34 * (e.holo ? 1.7 : 1.6) * e.scale * e.depth / 2;
+        e.x = x; e.y = y; e.depth = 0.8 + (y - 140) / 160;
+        const halfW = 34 * (e.holo ? 2.0 : 2.2) * e.scale * e.depth / 2;
         e.x = Math.min(e.x, BW - halfW - 2); // keep the sprite inside the screen
       });
     }
@@ -1073,10 +1088,12 @@
       if (opts.ability && p.fx === 'ability') d *= 1.2;
       d = Math.round(d);
       e.hp = Math.max(0, e.hp - d);
+      B.score = (B.score || 0) + d;
+      B.scoreAdd = (B.scoreAdd || 0) + d;
       e.hitT = 1; e.kb = 1;
       const b = eBox(e);
-      if (crit) popup(e.x, b.y - 6, 'CRITICAL', '#bfe6ff');
-      popup(e.x + rand(12) - 6, b.y + 6, d.toLocaleString(), weak ? Sprites.ELEMENT_COLORS[elem] : '#ffffff', crit || opts.big);
+      if (crit) B.fx.push({ type: 'txt', x: e.x, y: b.y + 2, text: 'CRITICAL', color: '#dff3ff', t: 0, dur: 1000, glow: '#4da3ff', size: 8 });
+      popup(e.x + rand(12) - 6, b.y + 16, d.toLocaleString(), weak ? Sprites.ELEMENT_COLORS[elem] : '#ffffff', crit || opts.big);
       burst(e.x, b.cy, Sprites.ELEMENT_COLORS[elem] || '#fff', 7);
       if (e.broken <= 0 && brk > 0) {
         e.bk -= brk * (weak ? 3 : 1) * (elem === 'kin' ? 0.6 : 1) * p.brkMult;
@@ -1132,9 +1149,11 @@
       gainOrbs(n);
       addSuper(6);
       log(`${C.kin.name}${frameLabel(C.kin)} → エレメント +${n}`);
+      banner(C.kin.fire?.frame ? `${C.kin.fire.frame.n}${C.kin.fire.shots > 1 ? ' ×' + C.kin.fire.shots : ''}` : C.kin.name);
     }
     async function useCard(c) {
       pay(p, c.cost);
+      banner(c.name);
       const color = Sprites.ELEMENT_COLORS[c.el] || '#fff';
       if (c.id === 'ene' || c.id === 'pow') {
         const e = B.enemies[B.target];
@@ -1190,6 +1209,7 @@
       const s = p.abil.sup;
       const color = Sprites.ELEMENT_COLORS[p.element] || '#fff';
       p.superG = 0;
+      banner(s?.n || 'SUPER');
       B.superFx = { t: 0, dur: 2100, color, name: s?.n || 'SUPER', icon: s };
       await sleep(1250);
       const ts = alive();
@@ -1209,6 +1229,7 @@
       const n = Math.min(8, counts[el]);
       for (let i = 0; i < n; i++) p.orbs.splice(p.orbs.indexOf(el), 1);
       const def = Content.GUARD[el];
+      banner(def.n);
       const color = Sprites.ELEMENT_COLORS[el];
       if (el === 'arc') p.buffs.evadeUp = { v: Math.min(0.6, 0.1 * n), t: 2 };
       else if (el === 'solar') p.buffs.armor = { v: Math.min(0.5, 0.08 * n), t: 2 };
@@ -1287,6 +1308,7 @@
       updateHud();
       await sleep(1300);
       running = false;
+      clearInterval(autoTimer);
       if (B.done !== 'win') return resolveBattle({ win: false });
       const first = !S.cleared[st.id];
       const glimmer = Math.round((Math.round(st.reward * (first || st.farm ? 1 : 0.6)) + (first ? 500 : 0)) * (p.gp.has('glim') ? 1.25 : 1));
@@ -1304,19 +1326,21 @@
       resolveBattle({ win: true, glimmer, xp, levelUp, lv: job.lv, drops });
     }
 
-    // ---- HUD ----
-    const sideBtn = c => c ? `<button class="abtn" data-id="${c.id}">
-        ${c.icon ? `<img src="${img(c.icon)}" alt="">` : ''}
-        <span class="an">${esc(c.name)}</span>
-        <span class="cost">${c.kind === 'normal' ? '<b>通常</b>' : costPips(c.cost)}</span></button>` : '<div class="abtn empty"></div>';
-    $('.bt-left').innerHTML = ['kin', 'ene', 'pow'].map(k => sideBtn(C[k])).join('');
-    $('.bt-right').innerHTML = ['mel', 'gre', 'cls'].map(k => sideBtn(C[k])).join('');
+    // ---- HUD (Mobius-style) ----
+    const segs = c => c.kind === 'normal' ? '<span class="lbl">通常</span>'
+      : Object.entries(c.cost).flatMap(([e, n]) => Array.from({ length: n }, () => `<i data-e="${e}"></i>`)).join('');
+    const sideBtn = (c, side) => c ? `<button type="button" class="abtn ${side}" data-id="${c.id}" aria-label="${esc(c.name)}">
+        <span class="ic">${c.icon ? `<img src="${img(c.icon)}" alt="">` : ''}</span>
+        <span class="segs">${segs(c)}</span></button>` : '<div class="abtn empty"></div>';
+    $('.bt-left').innerHTML = ['kin', 'ene', 'pow'].map(k => sideBtn(C[k], 'wpn')).join('');
+    $('.bt-right').innerHTML = ['mel', 'gre', 'cls'].map(k => sideBtn(C[k], 'skl')).join('');
     $$('.abtn[data-id]').forEach(b => b.onclick = ev => {
       ev.stopPropagation();
       const c = C[b.dataset.id];
       if (c.kind === 'normal') doAction(normalAttack);
       else doAction(() => useCard(c));
     });
+    const orbCss = e => { const c = Sprites.ELEMENT_COLORS[e]; return `background:radial-gradient(circle at 35% 30%,#fff 0 10%,${c} 42%,${Sprites.shade(c, -90)} 100%)`; };
     function drawRing() {
       const rc = $('.ring canvas').getContext('2d');
       const R = 96;
@@ -1325,39 +1349,109 @@
       const seg = (Math.PI * 2) / MAX_ORBS;
       for (let i = 0; i < MAX_ORBS; i++) {
         rc.beginPath();
-        rc.arc(R, R, 78, -Math.PI / 2 + i * seg + 0.04, -Math.PI / 2 + (i + 1) * seg - 0.04);
-        rc.strokeStyle = sorted[i] ? Sprites.ELEMENT_COLORS[sorted[i]] : 'rgba(255,255,255,0.12)';
-        rc.lineWidth = 20; rc.stroke();
+        rc.arc(R, R, 80, -Math.PI / 2 + i * seg + 0.03, -Math.PI / 2 + (i + 1) * seg - 0.03);
+        rc.strokeStyle = sorted[i] ? Sprites.ELEMENT_COLORS[sorted[i]] : 'rgba(255,255,255,0.10)';
+        rc.lineWidth = 22; rc.stroke();
       }
-      rc.beginPath(); rc.arc(R, R, 56, 0, Math.PI * 2); rc.fillStyle = 'rgba(8,10,16,0.85)'; rc.fill();
+      const grd = rc.createRadialGradient(R, R, 10, R, R, 62);
+      grd.addColorStop(0, '#2a2c33'); grd.addColorStop(1, '#0c0d10');
+      rc.beginPath(); rc.arc(R, R, 62, 0, Math.PI * 2); rc.fillStyle = grd; rc.fill();
+      rc.lineWidth = 3; rc.strokeStyle = 'rgba(255,255,255,0.35)'; rc.stroke();
       if (B.ringHold > 0) {
-        rc.beginPath(); rc.arc(R, R, 56, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, B.ringHold));
+        rc.beginPath(); rc.arc(R, R, 62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, B.ringHold));
         rc.strokeStyle = '#ffffff'; rc.lineWidth = 8; rc.stroke();
       }
     }
+    const BUFF_ICONS = [
+      ['barricade', '#79bbff', 'shield'], ['armor', '#ff8a1e', 'shield'], ['evadeUp', '#79bbff', 'speed'],
+      ['weave', '#5fd970', 'heal'], ['regen', '#5fd970', 'heal'], ['gunslinger', '#e2c770', 'up'], ['evade', '#e2c770', 'speed'],
+    ];
     function updateHud() {
-      $('.hp i').style.width = (p.hp / p.maxHp * 100) + '%';
-      $('.hp span').textContent = `${p.hp} / ${p.maxHp}${p.shield ? ` (+${p.shield})` : ''}`;
-      $('.sp i').style.width = p.superG + '%';
-      $('.sp span').textContent = p.superG >= 100 ? `▶ ${p.abil.sup?.n || 'SUPER'}` : `SUPER ${Math.floor(p.superG)}%`;
+      $('.m-hpv').innerHTML = `${p.hp.toLocaleString()}<small>/${p.maxHp.toLocaleString()}</small>${p.shield ? `<em>+${p.shield}</em>` : ''}`;
+      $('.m-hpbar i').style.width = (p.hp / p.maxHp * 100) + '%';
+      $('.m-spbar i').style.width = p.superG + '%';
       const sp = $('.sp');
+      sp.style.setProperty('--g', p.superG + '%');
       sp.disabled = B.busy || !!B.done || p.superG < 100 || !p.abil.sup;
       sp.classList.toggle('ready', p.superG >= 100 && !B.busy && !B.done);
+      $('.score').textContent = (B.score || 0).toLocaleString();
+      if (B.scoreAdd) { const sa = $('.m-scoreadd'); sa.textContent = '+' + B.scoreAdd.toLocaleString(); sa.classList.remove('show'); void sa.offsetWidth; sa.classList.add('show'); B.scoreAdd = 0; }
       const sorted = ORB_ORDER.flatMap(e => p.orbs.filter(o => o === e));
-      $('.bt-orbs').innerHTML = Array.from({ length: MAX_ORBS }, (_, i) => sorted[i]
-        ? `<span class="orb" style="background:${Sprites.ELEMENT_COLORS[sorted[i]]};color:${Sprites.ELEMENT_COLORS[sorted[i]]}"></span>`
-        : '<span class="orb empty"></span>').join('');
+      $('.m-orbs').innerHTML = Array.from({ length: MAX_ORBS }, (_, i) => sorted[i] ? `<span class="orb" style="${orbCss(sorted[i])}"></span>` : '<span class="orb empty"></span>').join('');
+      // target: turns until it acts (dots), break gauge, counter chip
+      const t = B.enemies[B.target];
+      if (t && t.hp > 0) {
+        const max = Content.enemyDef(t.key).brk;
+        $('.m-dots').innerHTML = Array.from({ length: t.spd }, (_, i) => `<span class="${i < t.counter ? 'on' : ''}"></span>`).join('');
+        $('.m-brk i').style.width = (t.broken > 0 ? 100 : (1 - t.bk / max) * 100) + '%';
+        $('.m-brk').classList.toggle('broken', t.broken > 0);
+        $('.m-cnt').textContent = t.broken > 0 ? 'B' : t.counter;
+        $('.m-tinfo').innerHTML = `${esc(t.n)} ― 弱点 <span style="color:${Sprites.ELEMENT_COLORS[t.weak]}">${ELEMENT_NAME[t.weak]}</span> · ${t.broken > 0 ? '<b style="color:#ffd84a">BREAK中</b>' : `ブレイクまで ${Math.round(t.bk / max * 100)}%`}`;
+      }
+      // ability cards: one segment per cost orb, lit while that orb is available
       $$('.abtn[data-id]').forEach(b => {
         const c = C[b.dataset.id];
         const ok = c.kind === 'normal' || canPay(p.orbs, c.cost);
         b.disabled = B.busy || !!B.done || !ok;
         b.classList.toggle('ready', ok && !B.busy && c.kind !== 'normal');
+        const left = {};
+        p.orbs.forEach(o => { left[o] = (left[o] || 0) + 1; });
+        let anyLeft = p.orbs.length;
+        b.querySelectorAll('i[data-e]').forEach(seg => {
+          const e = seg.dataset.e;
+          let lit = false;
+          if (e === 'any') { lit = anyLeft-- > 0; seg.style.background = lit ? '#e8e8e8' : ''; }
+          else { lit = (left[e] || 0) > 0; if (lit) left[e]--; seg.style.background = lit ? Sprites.ELEMENT_COLORS[e] : ''; }
+        });
       });
+      $('.m-buffs').innerHTML = BUFF_ICONS.filter(([k]) => p.buffs[k]).map(([, col]) => `<span style="border-color:${col};background:linear-gradient(${Sprites.shade(col, -40)},${Sprites.shade(col, -110)})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 20V6M6 12l6-6 6 6"/></svg></span>`).join('')
+        + (p.shield ? `<span style="border-color:#b084eb;background:linear-gradient(#5a3a8a,#24143a)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span>` : '');
       $('.ring').classList.toggle('off', B.busy || !!B.done || !p.orbs.length);
+      $('.m-auto').classList.toggle('on', !!B.auto);
       drawRing();
     }
     $('.sp').onclick = () => doAction(useSuper);
-    $('.flee').onclick = () => { if (confirm('撤退しますか?(報酬なし)')) { B.done = 'lose'; running = false; resolveBattle({ win: false }); } };
+    const flee = () => { B.done = 'lose'; running = false; clearInterval(autoTimer); resolveBattle({ win: false }); };
+    $('.m-help').onclick = () => {
+      const m = el(`<div class="modal"><div class="panel">
+        <div class="row"><b style="color:var(--accent)">HELP</b><span class="grow"></span><button class="pbtn small x">閉じる</button></div>
+        <ul style="line-height:1.9;padding-left:18px;margin:12px 0">
+          <li>画面タップ:通常攻撃(キネティック武器)。敵をタップでターゲット切替</li>
+          <li>通常攻撃でエレメントが溜まる(画面上部)</li>
+          <li>左:エネルギー / パワー武器、右:近接 / グレネード / クラス(必要エレメントで使用)</li>
+          <li>弱点エレメントでブレイクゲージを削り、BREAK でダメージ2倍</li>
+          <li>左下 SUPER:ゲージ満タンでタップ / 右下 GUARD:長押しでエレメントを消費して防御</li>
+          <li>FULL AUTO:自動で戦闘 / TARGET VIEW:ターゲット切替</li>
+        </ul>
+        <button class="pbtn fl" style="border-color:var(--bad);color:var(--bad)">撤退する(報酬なし)</button></div></div>`);
+      m.querySelector('.x').onclick = () => m.remove();
+      m.querySelector('.fl').onclick = () => { m.remove(); flee(); };
+      document.body.appendChild(m);
+    };
+    $('.m-tv').onclick = () => {
+      const al = B.enemies.map((e, i) => i).filter(i => B.enemies[i].hp > 0);
+      if (!al.length) return;
+      B.target = al[(al.indexOf(B.target) + 1) % al.length];
+      updateHud();
+    };
+    // FULL AUTO: super when ready → guard when low → best affordable card (weakness first) → normal attack
+    let autoTimer = 0;
+    const autoStep = () => {
+      if (!B.auto || B.busy || B.done) return;
+      if (p.superG >= 100 && p.abil.sup) return doAction(useSuper);
+      if (p.hp < p.maxHp * 0.35 && p.orbs.length >= 3) return doAction(guard);
+      const t = B.enemies[B.target];
+      const cards = ['pow', 'gre', 'mel', 'ene'].map(k => C[k]).filter(c => c && canPay(p.orbs, c.cost));
+      const pickC = cards.find(c => t && c.el === t.weak) || cards[0];
+      if (pickC) return doAction(() => useCard(pickC));
+      return doAction(normalAttack);
+    };
+    $('.m-auto').onclick = () => {
+      B.auto = !B.auto;
+      clearInterval(autoTimer);
+      if (B.auto) autoTimer = setInterval(autoStep, 250);
+      updateHud();
+    };
     // Guard ring long press (timer-based so it works even when animation frames are throttled)
     const HOLD_MS = 600;
     let holdStart = 0, holdTimer = 0, holdRaf = 0;
@@ -1398,8 +1492,8 @@
       g.fillStyle = bgc; g.fillRect(x, y, w, h);
       g.fillStyle = color; g.fillRect(x, y, Math.max(0, w * v), h);
     }
-    function txt(s, x, y, size, color, align = 'center') {
-      g.font = `700 ${size}px Roboto, 'Noto Sans JP', sans-serif`; g.textAlign = align;
+    function txt(s, x, y, size, color, align = 'center', serif = false) {
+      g.font = serif ? `800 ${size}px Cinzel, serif` : `700 ${size}px 'Noto Sans JP', sans-serif`; g.textAlign = align;
       g.fillStyle = '#000'; g.fillText(s, x + 0.6, y + 0.6);
       g.fillStyle = color; g.fillText(s, x, y);
     }
@@ -1463,7 +1557,7 @@
       if (B.pDodge > 0) { g.globalAlpha = 0.35; g.drawImage(B.guardian.sprite, PX - b.w / 2, b.y, b.w, b.h); g.globalAlpha = 1; }
       if (!(B.pHitT > 0 && Math.floor(B.time / 60) % 2)) {
         Sprites.drawLive(g, B.guardian.sprite, b.cx, PY - b.dash * 40 + recoil, b.w * sc, b.h * sc, B.time,
-          { breath: 0.018, sway: 0.7, hem: 1.2, hemFrom: B.guardian.hem, lean: -recoil * 0.6 });
+          { breath: 0.016, sway: 0.35, lean: -recoil * 0.6 }); // no hem wave: feet stay planted
       }
       // Weapon in hand, aimed at the target
       const wsp = B.weapons[B.held] || B.weapons.kin;
@@ -1530,7 +1624,9 @@
         } else if (f.type === 'txt') {
           const y = f.y - k * 16;
           g.globalAlpha = k > 0.7 ? (1 - k) / 0.3 : 1;
-          txt(f.text, f.x, y, f.big ? 12 : 8, f.color);
+          if (f.glow) { g.shadowColor = f.glow; g.shadowBlur = 6; }
+          txt(f.text, f.x, y, f.size || (f.big ? 17 : 10), f.color, 'center', true);
+          g.shadowBlur = 0;
         }
         g.restore();
       }

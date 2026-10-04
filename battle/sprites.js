@@ -14,147 +14,7 @@
     return out.slice(0, h);
   };
 
-  // ---------------- Guardians (chibi 48px, 3/4 view facing right — after spyKles' Destiny pixel art) ----------------
-  // Materials: W main armor, R red accent, N dark armor/helmet/coat, U undersuit, G gold/trim light,
-  // B blue/secondary accent, C cloth (cape/cloak/mark), c cloth shade, L leather, V visor/eyes (glow), E emblem (glow)
-  const FRONT = {
-    titan: pad([
-      '................................................',
-      '................KKKKKKKKKK......................',
-      '..............KKNNNNNNNNNNKK....................',
-      '.............KNNNNNNNNNNNNNNK...................',
-      '............KNNNNNNNNNNNNNNNNK..................',
-      '...........KNNNNNWWWNNNNNNNNNNK.................',
-      '...........KNNNNNWWWNNNNNNNNNNK.................',
-      '..........KNNNNNNWWWNNNNNNNNNNNK................',
-      '..........KNNNNNNWWWNNNNNNNNNNNK................',
-      '..........KNNNWWWWWWWWWWWWWNNNNK................',
-      '..........KNNWWKKKKKKKKKKKWWNNNK................',
-      '..........KNNWKVVVVVVVVVVVKWNNNK................',
-      '..........KNNWWKKKKKKKKKKKWWNNNK................',
-      '..........KNNWWWWWWWWWWWWWWWNNK.................',
-      '...........KNNWWWWWWWWWWWWWNNK..................',
-      '............KKNNWWWWWWWWWNNKK...................',
-      '..............KKKUUUUUUUKKK.....................',
-      '.......KKKKKKKKKUUUUUUUUUKKKKKKKKK..............',
-      '.....KKWWWWWWWKKWWWWWWWWWKKWWWWWWWKK............',
-      '....KWWWWWWWWWWKWWWWWWWWWKWWWWWWWWWWK...........',
-      '...KWWWWRRRWWWWKWWWRRRWWWKWWWWRRRWWWWK..........',
-      '...KWWWRRRRRWWWKWWRREERRWKWWWRRRRRWWWK..........',
-      '...KWWWWRRRWWWWKWWRREERRWKWWWWRRRWWWWK..........',
-      '...KNWWWWWWWWWNKWWWRRRWWWKNWWWWWWWWWNKKKKKKK....',
-      '....KNNWWWWWNNKUWWWWWWWWWUKNNWWWWWNNKWWWWWWWK...',
-      '.....KKNNNNNKKUUWWWWWWWWWUUKKNNNNNKKWWWWWWWWK...',
-      '......KUUUUUK.KUUUUUUUUUUUK.KUUUUUUUUUWWWWK.....',
-      '......KWWWWWK.KRRRRRRRRRRRK..KKKKKKKKKKKKK......',
-      '......KWWRWWK.KRRCCCCCCCRRK.....................',
-      '......KWWWWWK.KRCCCCCCCCCRK.....................',
-      '.......KWWWK..KRCCCCCCCCCRK.....................',
-      '.......KUUUK..KCCCCCCCCCCCK.....................',
-      '.......KKKKK..KCCcCCCCCcCCK.....................',
-      '..............KCCcCCCCCcCCK.....................',
-      '.............KWWWWWKKKWWWWWK....................',
-      '............KWWWWWWK.KWWWWWWK...................',
-      '............KWWRRWWK.KWWRRWWK...................',
-      '............KWWWWWWK.KWWWWWWK...................',
-      '............KUUUUUUK.KUUUUUUK...................',
-      '............KWWWWWWK.KWWWWWWK...................',
-      '............KWWWWWWK.KWWWWWWK...................',
-      '...........KWWWRRWWK.KWWRRWWWK..................',
-      '..........KWWWWWWWWK.KWWWWWWWWK.................',
-      '..........KNNNNNNNNK.KNNNNNNNNK.................',
-      '..........KKKKKKKKKK.KKKKKKKKKK.................',
-    ], 48, 46),
-    hunter: pad([
-      '................................................',
-      '.................KKKKKKKK.......................',
-      '...............KKNNNNNNNNKK.....................',
-      '..............KNNNNNNNNNNNNK....................',
-      '.............KNNNNNNNNNNNNNNK...................',
-      '............KNNNNNNNNNNNNNNNNK..................',
-      '...........KNNNNNNNNNNNNNNNNNNK.................',
-      '...........KNNNNKKKKKKKKKKNNNNK.................',
-      '..........KNNNNKUUUUUUUUUUKNNNNK................',
-      '..........KNNNKUUUUUUUUUUUUKNNNK................',
-      '..........KNNNKUUVVUUUUVVUUKNNNK................',
-      '..........KNNNKUUUUUUUUUUUUKNNNK................',
-      '..........KNNNNKUUUUUUUUUUKNNNNK................',
-      '...........KNNNNKKKKKKKKKKNNNNK.................',
-      '..........KCNNNNNNNNNNNNNNNNNNK.................',
-      '.........KCCKNNNNNNNNNNNNNNNNKK.................',
-      '........KCCCKBBBBBBBBBBBBBBBBK..................',
-      '.......KCCCCKKBBBBBBBBBBBBBBKK..................',
-      '......KCCCCKWWKNNNBBBBBBNNNKWWK.................',
-      '......KCCCKWWWWKNNNNBBNNNNKWWWWK................',
-      '.....KCCCCKWWWWKNNNEEEENNNKWWWWWKKKKKKKKK.......',
-      '.....KCCCCKWWWWKNNNNEENNNNKWWWWWWWWWWWWWWK......',
-      '.....KCCCKKNWWNKNNNNNNNNNNKNWWWWWWWWWWWWWK......',
-      '....KCCCCK.KNNKKUUUUUUUUUUKKNNNNNNNNKKKKK.......',
-      '....KCCCCK.KWWKLLLLLLLLLLLLKKKKKKKKK............',
-      '....KCCCcK.KUUKUUUUUUUUUUUUK....................',
-      '...KCCCCcK..KKKUUUUUUUUUUUUK....................',
-      '...KCCCCcK....KCUUUUUUUUUUCK....................',
-      '...KCCCcK.....KCCUUUUUUUUCCK....................',
-      '..KCCCCcK.....KCCKWWWKKWWWKK....................',
-      '..KCCCcK.....KCCKWWWWKKWWWWK....................',
-      '..KCCCcK.....KCKWWWWWKKWWWWWK...................',
-      '.KCCCcK......KKKUUUUUKKUUUUUK...................',
-      '.KCCcK..........KWWWWKKWWWWK....................',
-      '.KCcK...........KWWWWKKWWWWK....................',
-      '.KKK...........KWWWWWKKWWWWWK...................',
-      '...............KWWRWWKKWWRWWK...................',
-      '...............KWWWWWKKWWWWWK...................',
-      '..............KUWWWWWKKWWWWWUK..................',
-      '.............KWWWWWWWKKWWWWWWWK.................',
-      '.............KNNNNNNNKKNNNNNNNK.................',
-      '.............KKKKKKKKKKKKKKKKKK.................',
-    ], 48, 46),
-    warlock: pad([
-      '...................KK...........................',
-      '..................KWWK..........................',
-      '.................KWWWWK.........................',
-      '................KWWGWWWK........................',
-      '...............KWWGWWWWWK.......................',
-      '..............KWWGWWWWWWWK......................',
-      '.............KWWGWWWWWWWWWK.....................',
-      '............KWWWWWWWWWWWWWWK....................',
-      '............KWWWWKKKKKKWWWWK....................',
-      '...........KWWWWKNNNNNNKWWWWK...................',
-      '...........KWWWKNNVVVVNNKWWWK...................',
-      '...........KWWWKNNNNNNNNKWWWK...................',
-      '...........KWWWWKNNNNNNKWWWWK...................',
-      '............KWWWWKKKKKKWWWWK....................',
-      '..........KKKKWWWWWWWWWWWWKKKK..................',
-      '........KKWWWWKWWWWWWWWWWKWWWWKK................',
-      '.......KWWWWWWKNNNNNNNNNNKWWWWWWK...............',
-      '.......KWWGGWWKNBNNNNNNBNKWWGGWWK...............',
-      '.......KWWWWWKKNBNNEENNBNKKWWWWWWKKKKKKKKKK.....',
-      '........KWWWKKNNBNNEENNBNNKKWWWWWWWWWWWWWWK.....',
-      '........KNNNKKNNBGGGGGGBNNKNWWWWWWWWWWWWWWK.....',
-      '........KNNNKKNNBNNNNNNBNNKKNNNNNNNNKKKKKK......',
-      '........KUUUKKNNBNNNNNNBNNK.KKKKKKKKK...........',
-      '.........KKKKNNNBNNNNNNBNNNK....................',
-      '............KNNNBNNNNNNBNNNK....................',
-      '...........KNNNNBNNNNNNBNNNNK...................',
-      '...........KNNNNBNNNNNNBNNNNK...................',
-      '..........KNNNNNBNNKKNNBNNNNNK..................',
-      '..........KNNNNBNNK..KNNBNNNNK..................',
-      '.........KNNNNNBNNK..KNNBNNNNNK.................',
-      '.........KNNNNBNNNK..KNNNBNNNNK.................',
-      '........KNNNNNBNNNK..KNNNBNNNNNK................',
-      '........KNNNNBNNNNK..KNNNNBNNNNK................',
-      '.......KNNNNNBNNNNK..KNNNNBNNNNNK...............',
-      '.......KKKKKKKKKKKK..KKKKKKKKKKKK...............',
-      '..........KUUK..........KUUK....................',
-      '.........KWUUK..........KUUWK...................',
-      '.........KKKKK..........KKKKK...................',
-    ], 48, 46),
-  };
-  // Battle uses the same 3/4 sprites (player on the left facing right). Hand = (x, y) in the rendered sprite (+1 pad)
-  const HAND = { titan: [44, 26], hunter: [42, 22], warlock: [42, 20] };
-  // Fraction of the sprite height below which cloth/robe hem waves
-  const HEM = { titan: 0.6, hunter: 0.4, warlock: 0.5 };
-
+  // ---------------- Guardians: built from shapes by pixelart.js (64px, 3/4 view facing right) ----------------
   const GHOST = ['....KK....', '...KAAK...', '..KAAAAK..', '.KAAMMAAK.', 'KAAMVVMAAK', '.KAAMMAAK.', '..KAAAAK..', '...KAAK...', '....KK....'];
 
   // ---------------- Enemies (front view, 32x32) ----------------
@@ -744,65 +604,26 @@
    * The result is padded by 1px on each side. */
   function renderShaded(rows, mats, key, outline = OUTLINE) {
     if (key && cache.has(key)) return cache.get(key);
-    const H = rows.length, W = Math.max(...rows.map(r => r.length));
-    const at = (x, y) => (y < 0 || y >= H || x < 0 || x >= W) ? '.' : (rows[y][x] || '.');
-    const solid = ch => ch !== '.' && ch !== ' ';
-    const group = ch => (mats[ch] && mats[ch].g) || ch;
+    const img = PixelArt.shadeRows(rows, mats, outline);
     const c = document.createElement('canvas');
-    c.width = W + 2; c.height = H + 2;
-    const g = c.getContext('2d');
-    const put = (x, y, col) => { g.fillStyle = col; g.fillRect(x + 1, y + 1, 1, 1); };
-    for (let y = -1; y <= H; y++) {
-      for (let x = -1; x <= W; x++) {
-        const ch = at(x, y);
-        if (!solid(ch)) {
-          const touch = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => { const n = at(x + dx, y + dy); return solid(n) && n !== 'K'; });
-          if (touch) put(x, y, outline);
-          continue;
-        }
-        if (ch === 'K') {
-          const nb = [[0, -1], [-1, 0], [1, 0], [0, 1]].map(([dx, dy]) => at(x + dx, y + dy));
-          const inside = nb.every(solid);
-          const mat = nb.map(n => mats[n]).find(m => m && !m.glow);
-          put(x, y, inside && mat && outline === OUTLINE ? ramp(mat.c)[0] : outline);
-          continue;
-        }
-        const m = mats[ch];
-        if (!m) continue;
-        if (m.glow) { put(x, y, m.c); continue; }
-        const gr = group(ch);
-        const differs = n => !solid(n) || n === 'K' || group(n) !== gr;
-        let tone = 2 + (m.tone || 0);
-        if (differs(at(x, y - 1))) tone += 1;
-        if (differs(at(x - 1, y))) tone += 0.6;
-        if (differs(at(x, y + 1))) tone -= 1;
-        if (differs(at(x + 1, y))) tone -= 0.6;
-        // soft vertical gradient inside large regions (lighter at the top of the sprite)
-        tone += (0.5 - y / H) * 0.6;
-        put(x, y, ramp(m.c)[Math.max(0, Math.min(4, Math.round(tone)))]);
-      }
-    }
+    c.width = img.w; c.height = img.h;
+    c.getContext('2d').putImageData(new ImageData(img.data, img.w, img.h), 0, 0);
     if (key) cache.set(key, c);
     return c;
   }
   const cache = new Map();
 
   const CLASS_KEYS = ['titan', 'hunter', 'warlock'];
-  function guardianMats(key, element, override) {
-    const el = ELEMENT_COLORS[element] || ELEMENT_COLORS.light;
-    const p = { ...GUARDIAN_PALETTES[key], ...(override || {}) };
-    const m = { V: { c: shade(el, 50), glow: true }, E: { c: el, glow: true }, c: { c: shade(p.C, -30), g: 'C' } };
-    for (const k of ['W', 'R', 'N', 'U', 'G', 'B', 'C', 'L']) m[k] = { c: p[k] };
-    return m;
-  }
   function guardianSprite(cls, element, override) {
-    const key = CLASS_KEYS[cls] || 'titan';
-    return renderShaded(FRONT[key], guardianMats(key, element, override), `gf:${key}:${element}:${JSON.stringify(override || {})}`);
+    const key = PixelArt.CLASS_KEYS[cls] || 'titan';
+    const el = ELEMENT_COLORS[element] || ELEMENT_COLORS.light;
+    return renderShaded(PixelArt.guardianRows(key), PixelArt.guardianMats(key, el, override), `gf:${key}:${element}:${JSON.stringify(override || {})}`);
   }
-  // Battle sprite: same 3/4 art, plus hand position (weapon anchor) and cloth hem line
+  // Battle sprite: same art + hand position (weapon anchor, +1 outline pad) and cloth hem line
   function guardianBattle(cls, element, override) {
-    const key = CLASS_KEYS[cls] || 'titan';
-    return { sprite: guardianSprite(cls, element, override), hand: HAND[key], hem: HEM[key] };
+    const key = PixelArt.CLASS_KEYS[cls] || 'titan';
+    const G = PixelArt.GUARDIANS[key];
+    return { sprite: guardianSprite(cls, element, override), hand: [G.hand[0] + 1, G.hand[1] + 1], hem: G.hem };
   }
   function ghostSprite(element, override) {
     const el = ELEMENT_COLORS[element] || '#79bbff';
