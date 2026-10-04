@@ -44,7 +44,7 @@ function upscale({ w, h, data }, s) {
 
 fs.mkdirSync(outDir, { recursive: true });
 for (const key of PixelArt.CLASS_KEYS) {
-  const img = PixelArt.shadeRows(PixelArt.guardianRows(key), PixelArt.guardianMats(key, ELEMENT[key]));
+  const img = PixelArt.composeGuardian(key, ELEMENT[key]);
   for (const s of [1, scale]) {
     const u = s === 1 ? { ...img, data: new Uint8Array(img.data) } : upscale(img, s);
     const file = path.join(outDir, `${key}${s === 1 ? '' : '@' + s + 'x'}.png`);

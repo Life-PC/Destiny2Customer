@@ -614,16 +614,71 @@
   const cache = new Map();
 
   const CLASS_KEYS = ['titan', 'hunter', 'warlock'];
-  function guardianSprite(cls, element, override) {
+  function imgToCanvas(img) {
+    const c = document.createElement('canvas');
+    c.width = img.w; c.height = img.h;
+    c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(img.data), img.w, img.h), 0, 0);
+    return c;
+  }
+  // Menu / cut-in sprite: all parts composited at rest. slotPal re-skins armor slots (future set looks).
+  function guardianSprite(cls, element, slotPal) {
     const key = PixelArt.CLASS_KEYS[cls] || 'titan';
     const el = ELEMENT_COLORS[element] || ELEMENT_COLORS.light;
-    return renderShaded(PixelArt.guardianRows(key), PixelArt.guardianMats(key, el, override), `gf:${key}:${element}:${JSON.stringify(override || {})}`);
+    const ck = `gf:${key}:${element}:${JSON.stringify(slotPal || {})}`;
+    if (!cache.has(ck)) cache.set(ck, imgToCanvas(PixelArt.composeGuardian(key, el, slotPal)));
+    return cache.get(ck);
   }
-  // Battle sprite: same art + hand position (weapon anchor, +1 outline pad) and cloth hem line
-  function guardianBattle(cls, element, override) {
+  /* Battle rig: one shaded layer per part (own outline) + joints, for animation.
+   * Layers are 66px (1px pad): draw at (-1, -1) so part coordinates match the shapes. */
+  function guardianRig(cls, element, slotPal) {
     const key = PixelArt.CLASS_KEYS[cls] || 'titan';
+    const el = ELEMENT_COLORS[element] || ELEMENT_COLORS.light;
+    const ck = `rig:${key}:${element}:${JSON.stringify(slotPal || {})}`;
+    if (cache.has(ck)) return cache.get(ck);
     const G = PixelArt.GUARDIANS[key];
-    return { sprite: guardianSprite(cls, element, override), hand: [G.hand[0] + 1, G.hand[1] + 1], hem: G.hem };
+    const rig = {
+      key, hand: G.hand, hip: G.hip, w: 66, h: 66,
+      layers: G.parts.map(p => ({ ...p, canvas: imgToCanvas(PixelArt.shadePart(key, p.id, el, slotPal)) })),
+      sprite: guardianSprite(cls, element, slotPal),
+    };
+    cache.set(ck, rig);
+    return rig;
+  }
+  /* Pose = { dx, dy, lean, breath, na, nadx, fa, nl, fl, hd } (sprite px / radians).
+   * Draws the rig with its feet origin at (ox, oy) top-left of the 64px frame, scaled by `scale`.
+   * `weapon` { sprite, gx, gy, scale } is held in the near hand. Returns the hand position in canvas space. */
+  function drawRig(g, rig, ox, oy, scale, pose, weapon) {
+    const [hx, hy] = rig.hip;
+    const partPose = {
+      nearArm: { r: pose.na || 0, dx: pose.nadx || 0 }, farArm: { r: pose.fa || 0 },
+      nearLeg: { r: pose.nl || 0 }, farLeg: { r: pose.fl || 0 }, head: { r: pose.hd || 0 },
+    };
+    let handPt = null;
+    for (const L of rig.layers) {
+      let M = new DOMMatrix().translate(ox, oy).scale(scale).translate(pose.dx || 0, pose.dy || 0);
+      if (L.body) M = M.translate(hx, hy).rotate((pose.lean || 0) * 57.2958).translate(-hx, -hy).translate(0, pose.breath || 0);
+      const pp = partPose[L.follow || L.id] || {};
+      const [px, py] = L.pivot;
+      M = M.translate(pp.dx || 0, 0).translate(px, py).rotate((pp.r || 0) * 57.2958).translate(-px, -py);
+      g.save();
+      g.transform(M.a, M.b, M.c, M.d, M.e, M.f);
+      g.drawImage(L.canvas, -1, -1);
+      if (L.id === 'nearArm') {
+        const [ax, ay] = rig.hand;
+        handPt = M.transformPoint(new DOMPoint(ax, ay));
+        if (weapon) {
+          const ws = weapon.scale || 0.5;
+          g.translate(ax, ay);
+          g.drawImage(weapon.sprite, -weapon.gx * ws, -weapon.gy * ws, weapon.sprite.width * ws, weapon.sprite.height * ws);
+          if (weapon.flash) {
+            g.globalAlpha = weapon.flash; g.fillStyle = '#fff6c0';
+            g.beginPath(); g.arc((weapon.sprite.width - weapon.gx) * ws + 1.5, 0, 2 + weapon.flash * 2, 0, Math.PI * 2); g.fill();
+          }
+        }
+      }
+      g.restore();
+    }
+    return handPt;
   }
   function ghostSprite(element, override) {
     const el = ELEMENT_COLORS[element] || '#79bbff';
@@ -792,7 +847,7 @@
   }
 
   root.Sprites = {
-    ELEMENT_COLORS, FLOATING, guardianSprite, guardianBattle, ghostSprite, enemySprite, weaponSprite,
+    ELEMENT_COLORS, FLOATING, guardianSprite, guardianRig, drawRig, ghostSprite, enemySprite, weaponSprite,
     drawLive, loadImage, pixelatedBackground, pixelatedHologram, iconColor, armorPalette, gridBackground, lighten, shade,
   };
 })(window);

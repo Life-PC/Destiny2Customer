@@ -159,110 +159,169 @@
   }
 
   /* ---------------- guardians (64x64, facing right; ground at y≈62) ----------------
+   * Built from PARTS so they can be animated (rotated around a joint) and re-skinned per
+   * armor slot later (set bonuses). Each part:
+   *   id, slot (head / chest / arms / legs / cls), pivot [x, y] (joint, sprite coords),
+   *   body: true → moves with the torso (lean / breathing), follow: id → uses that part's pose,
+   *   shapes (see rasterize). Parts are listed back to front.
    * Materials: W main armor, R red/accent, N dark armor/hood/coat, U undersuit, G gold/light trim,
    * B secondary accent (blue/grey), C cloth (cape/mark), c cloth shade, S steel, V visor/eyes (glow), E emblem (glow) */
   const GUARDIANS = {
     titan: {
       pal: { W: '#e8eaf0', R: '#c8323c', N: '#3a4254', U: '#262b38', G: '#d8a830', B: '#9aa4b8', C: '#b02c34', S: '#cfd6e2' },
-      hand: [58, 39], hem: 0.9,
-      shapes: [
-        // far arm + pauldron
-        ['r', 'U', 13, 34, 19, 44], ['e', 'W', 16, 45, 4, 3.5], ['e', 'W', 18, 31, 8, 6.5], ['e', 'R', 18, 29, 5, 2],
-        // legs: wide stance (far, near), red knee marks, dark boots
-        ['r', 'U', 28, 44, 36, 49],
-        ['p', 'W', [[21, 44], [29, 44], [28, 53], [20, 53]]], ['p', 'W', [[19, 53], [28, 53], [28, 59], [18, 59]]],
-        ['e', 'R', 23, 52, 2.5, 2], ['l', 'R', 21, 56, 26, 56, 1], ['r', 'N', 16, 58, 28, 62],
-        ['p', 'W', [[35, 44], [43, 44], [45, 53], [36, 53]]], ['p', 'W', [[36, 53], [46, 53], [47, 59], [36, 59]]],
-        ['e', 'R', 41, 52, 2.5, 2], ['l', 'R', 39, 56, 44, 56, 1], ['r', 'N', 35, 58, 48, 62],
-        // torso
-        ['p', 'W', [[21, 26], [43, 26], [45, 36], [41, 44], [23, 44], [19, 36]]],
-        ['r', 'U', 24, 38, 40, 43], ['r', 'N', 22, 42, 42, 44], ['r', 'G', 31, 42, 33, 44],
-        ['p', 'R', [[26, 29], [38, 29], [32, 36]]], ['r', 'E', 31, 30, 33, 31],
-        // titan mark
-        ['p', 'C', [[29, 44], [35, 44], [36, 53], [28, 53]]], ['l', 'c', 31, 46, 31, 52, 1], ['l', 'c', 34, 46, 34, 52, 1],
-        // near pauldron
-        ['e', 'W', 45, 29, 9.5, 7.5], ['e', 'R', 45, 27, 6.5, 2.2], ['l', 'B', 38, 33, 52, 33, 1],
-        // near arm reaching forward
-        ['r', 'U', 43, 34, 50, 39], ['p', 'W', [[48, 33], [56, 34], [57, 41], [48, 41]]], ['l', 'R', 51, 34, 51, 41, 1], ['e', 'U', 58.5, 38.5, 3, 3],
-        // neck + helmet
-        ['r', 'U', 27, 22, 37, 27],
-        ['e', 'N', 32, 14, 13.5, 12], ['r', 'B', 28, 3, 32, 12],
-        ['p', 'W', [[30, 12], [46, 12], [45, 24], [33, 25]]],
-        ['r', 'V', 34, 16, 45, 18], ['k', 'K', 33, 15, 46, 15, 1], ['k', 'K', 33, 19, 46, 19, 1],
-        ['r', 'N', 35, 21, 44, 24],
+      hand: [58, 38.5], hip: [32, 44],
+      parts: [
+        { id: 'farArm', slot: 'arms', pivot: [18, 31], body: true, shapes: [
+          ['r', 'U', 13, 34, 19, 44], ['e', 'W', 16, 45, 4, 3.5], ['e', 'W', 18, 31, 8, 6.5], ['e', 'R', 18, 29, 5, 2]] },
+        { id: 'farLeg', slot: 'legs', pivot: [24, 44], shapes: [
+          ['p', 'W', [[21, 44], [29, 44], [28, 53], [20, 53]]], ['p', 'W', [[19, 53], [28, 53], [28, 59], [18, 59]]],
+          ['e', 'R', 23, 52, 2.5, 2], ['l', 'R', 21, 56, 26, 56, 1], ['r', 'N', 16, 58, 28, 62]] },
+        { id: 'nearLeg', slot: 'legs', pivot: [39, 44], shapes: [
+          ['p', 'W', [[35, 44], [43, 44], [45, 53], [36, 53]]], ['p', 'W', [[36, 53], [46, 53], [47, 59], [36, 59]]],
+          ['e', 'R', 41, 52, 2.5, 2], ['l', 'R', 39, 56, 44, 56, 1], ['r', 'N', 35, 58, 48, 62]] },
+        { id: 'torso', slot: 'chest', pivot: [32, 44], body: true, shapes: [
+          ['r', 'U', 28, 44, 36, 49],
+          ['p', 'W', [[21, 26], [43, 26], [45, 36], [41, 44], [23, 44], [19, 36]]],
+          ['r', 'U', 24, 38, 40, 43], ['r', 'N', 22, 42, 42, 44], ['r', 'G', 31, 42, 33, 44],
+          ['p', 'R', [[26, 29], [38, 29], [32, 36]]], ['r', 'E', 31, 30, 33, 31]] },
+        { id: 'mark', slot: 'cls', pivot: [32, 44], body: true, shapes: [
+          ['p', 'C', [[29, 44], [35, 44], [36, 53], [28, 53]]], ['l', 'c', 31, 46, 31, 52, 1], ['l', 'c', 34, 46, 34, 52, 1]] },
+        { id: 'head', slot: 'head', pivot: [32, 25], body: true, shapes: [
+          ['r', 'U', 27, 22, 37, 27],
+          ['e', 'N', 32, 14, 13.5, 12], ['r', 'B', 28, 3, 32, 12],
+          ['p', 'W', [[30, 12], [46, 12], [45, 24], [33, 25]]],
+          ['r', 'V', 34, 16, 45, 18], ['k', 'K', 33, 15, 46, 15, 1], ['k', 'K', 33, 19, 46, 19, 1],
+          ['r', 'N', 35, 21, 44, 24]] },
+        { id: 'nearArm', slot: 'arms', pivot: [44, 31], body: true, shapes: [
+          ['e', 'W', 45, 29, 9.5, 7.5], ['e', 'R', 45, 27, 6.5, 2.2], ['l', 'B', 38, 33, 52, 33, 1],
+          ['r', 'U', 43, 34, 50, 39], ['p', 'W', [[48, 33], [56, 34], [57, 41], [48, 41]]], ['l', 'R', 51, 34, 51, 41, 1], ['e', 'U', 58.5, 38.5, 3, 3]] },
       ],
     },
     hunter: {
       pal: { W: '#b4bccb', R: '#c8323c', N: '#222a3e', U: '#181c28', G: '#c9ced8', B: '#3aa6ee', C: '#2a3450', L: '#6a5038' },
-      hand: [57, 38], hem: 0.4,
-      shapes: [
-        // cloak flowing behind (with blue lining)
-        ['p', 'C', [[17, 26], [31, 26], [29, 56], [8, 61], [12, 44]]],
-        ['p', 'B', [[12, 44], [17, 28], [20, 29], [15, 54], [9, 60]]],
-        ['l', 'c', 20, 34, 15, 58, 1], ['l', 'c', 25, 32, 22, 56, 1],
-        // far arm
-        ['r', 'U', 19, 32, 24, 44], ['e', 'W', 21.5, 45, 3, 2.5],
-        // legs
-        ['r', 'W', 24, 46, 31, 54], ['r', 'W', 23, 54, 31, 60], ['e', 'U', 27, 53, 2.5, 1.8], ['r', 'N', 22, 59, 32, 62],
-        ['r', 'W', 33, 46, 40, 54], ['r', 'W', 33, 54, 41, 60], ['e', 'U', 37, 53, 2.5, 1.8], ['r', 'N', 32, 59, 43, 62],
-        // torso: dark vest, chest plate with blue chevrons, belt
-        ['p', 'N', [[22, 29], [42, 29], [43, 46], [23, 46]]],
-        ['p', 'U', [[25, 30], [41, 30], [40, 39], [26, 39]]],
-        ['p', 'B', [[26, 32], [33, 36], [40, 32], [40, 34], [33, 38], [26, 34]]],
-        ['r', 'L', 23, 43, 42, 45], ['r', 'G', 31, 43, 34, 45], ['r', 'L', 38, 45, 41, 49],
-        // cowl / scarf
-        ['e', 'C', 32, 28, 11, 4.5], ['l', 'B', 23, 29, 41, 29, 1],
-        // near arm forward
-        ['e', 'W', 42, 32, 5.5, 4.5], ['r', 'U', 43, 34, 49, 39], ['p', 'W', [[48, 34], [55, 35], [56, 41], [48, 41]]], ['e', 'U', 57.5, 38, 3, 3],
-        // hood
-        ['e', 'N', 32, 17, 13, 12.5], ['p', 'N', [[25, 9], [33, 2], [41, 9]]],
-        ['l', 'c', 22, 12, 24, 25, 1],
-        ['e', 'U', 36.5, 19, 7.5, 6.5],
-        ['r', 'V', 34, 18, 35, 19], ['r', 'V', 39, 18, 40, 19],
+      hand: [57, 38], hip: [32, 45],
+      parts: [
+        { id: 'cloak', slot: 'cls', pivot: [24, 28], body: true, shapes: [
+          ['p', 'C', [[17, 26], [31, 26], [29, 56], [8, 61], [12, 44]]],
+          ['p', 'B', [[12, 44], [17, 28], [20, 29], [15, 54], [9, 60]]],
+          ['l', 'c', 20, 34, 15, 58, 1], ['l', 'c', 25, 32, 22, 56, 1]] },
+        { id: 'farArm', slot: 'arms', pivot: [21, 32], body: true, shapes: [
+          ['r', 'U', 19, 32, 24, 44], ['e', 'W', 21.5, 45, 3, 2.5]] },
+        { id: 'farLeg', slot: 'legs', pivot: [27, 46], shapes: [
+          ['r', 'W', 24, 46, 31, 54], ['r', 'W', 23, 54, 31, 60], ['e', 'U', 27, 53, 2.5, 1.8], ['r', 'N', 22, 59, 32, 62]] },
+        { id: 'nearLeg', slot: 'legs', pivot: [36, 46], shapes: [
+          ['r', 'W', 33, 46, 40, 54], ['r', 'W', 33, 54, 41, 60], ['e', 'U', 37, 53, 2.5, 1.8], ['r', 'N', 32, 59, 43, 62]] },
+        { id: 'torso', slot: 'chest', pivot: [32, 45], body: true, shapes: [
+          ['p', 'N', [[22, 29], [42, 29], [43, 46], [23, 46]]],
+          ['p', 'U', [[25, 30], [41, 30], [40, 39], [26, 39]]],
+          ['p', 'B', [[26, 32], [33, 36], [40, 32], [40, 34], [33, 38], [26, 34]]],
+          ['r', 'L', 23, 43, 42, 45], ['r', 'G', 31, 43, 34, 45], ['r', 'L', 38, 45, 41, 49],
+          ['e', 'C', 32, 28, 11, 4.5], ['l', 'B', 23, 29, 41, 29, 1]] },
+        { id: 'head', slot: 'head', pivot: [32, 27], body: true, shapes: [
+          ['e', 'N', 32, 17, 13, 12.5], ['p', 'N', [[25, 9], [33, 2], [41, 9]]],
+          ['l', 'c', 22, 12, 24, 25, 1],
+          ['e', 'U', 36.5, 19, 7.5, 6.5],
+          ['r', 'V', 34, 18, 35, 19], ['r', 'V', 39, 18, 40, 19]] },
+        { id: 'nearArm', slot: 'arms', pivot: [42, 32], body: true, shapes: [
+          ['e', 'W', 42, 32, 5.5, 4.5], ['r', 'U', 43, 34, 49, 39], ['p', 'W', [[48, 34], [55, 35], [56, 41], [48, 41]]], ['e', 'U', 57.5, 38, 3, 3]] },
       ],
     },
     warlock: {
       pal: { W: '#f2b62c', R: '#c8323c', N: '#1c1c28', U: '#2a2a38', G: '#ffe38f', B: '#2f7ae2', C: '#20202e', L: '#7a5a30' },
-      hand: [57, 37], hem: 0.5,
-      shapes: [
-        // long coat tails (behind)
-        ['p', 'N', [[19, 40], [29, 40], [27, 62], [12, 62]]], ['p', 'N', [[35, 40], [45, 40], [52, 62], [37, 62]]],
-        ['l', 'B', 18, 44, 13, 61, 1], ['l', 'B', 46, 44, 51, 61, 1],
-        // boots
-        ['r', 'U', 26, 58, 31, 62], ['r', 'U', 33, 58, 38, 62],
-        // far arm with bond
-        ['r', 'N', 15, 33, 21, 44], ['r', 'E', 15, 42, 21, 43], ['e', 'U', 18, 46, 3, 2.5],
-        // coat body + front skirt
-        ['p', 'N', [[22, 28], [42, 28], [44, 45], [20, 45]]],
-        ['p', 'N', [[21, 44], [43, 44], [47, 59], [17, 59]]],
-        ['l', 'B', 29, 30, 27, 58, 1], ['l', 'B', 35, 30, 37, 58, 1],
-        ['l', 'G', 23, 31, 33, 41, 1.4], ['l', 'G', 41, 31, 31, 41, 1.4], ['e', 'E', 32, 35, 2, 2],
-        ['r', 'G', 22, 44, 42, 45],
-        // tall pointed helmet
-        ['p', 'W', [[22, 27], [25, 14], [31, 2], [38, 10], [43, 22], [42, 28], [23, 28]]],
-        ['l', 'G', 30, 4, 26, 21, 1.2], ['l', 'G', 33, 6, 39, 19, 1],
-        ['e', 'N', 35, 19, 6.5, 5.5], ['r', 'V', 32, 18, 40, 19],
-        // gold shoulders in front of the helmet rim
-        ['e', 'W', 20, 31, 6.5, 4.5], ['e', 'W', 44, 31, 7.5, 5], ['l', 'G', 39, 29, 49, 29, 1],
-        // near arm forward
-        ['r', 'N', 43, 34, 50, 39], ['r', 'W', 49, 33, 51, 40], ['p', 'U', [[51, 34], [56, 35], [56, 40], [51, 40]]], ['e', 'U', 57.5, 37, 2.8, 2.8],
+      hand: [57, 37], hip: [32, 44],
+      parts: [
+        { id: 'coatTails', slot: 'chest', pivot: [32, 40], body: true, shapes: [
+          ['p', 'N', [[19, 40], [29, 40], [27, 62], [12, 62]]], ['p', 'N', [[35, 40], [45, 40], [52, 62], [37, 62]]],
+          ['l', 'B', 18, 44, 13, 61, 1], ['l', 'B', 46, 44, 51, 61, 1]] },
+        { id: 'boots', slot: 'legs', pivot: [32, 58], shapes: [
+          ['r', 'U', 26, 58, 31, 62], ['r', 'U', 33, 58, 38, 62]] },
+        { id: 'farArm', slot: 'arms', pivot: [18, 33], body: true, shapes: [
+          ['r', 'N', 15, 33, 21, 44], ['e', 'U', 18, 46, 3, 2.5]] },
+        { id: 'bond', slot: 'cls', pivot: [18, 33], body: true, follow: 'farArm', shapes: [
+          ['r', 'E', 15, 42, 21, 43]] },
+        { id: 'torso', slot: 'chest', pivot: [32, 44], body: true, shapes: [
+          ['p', 'N', [[22, 28], [42, 28], [44, 45], [20, 45]]],
+          ['p', 'N', [[21, 44], [43, 44], [47, 59], [17, 59]]],
+          ['l', 'B', 29, 30, 27, 58, 1], ['l', 'B', 35, 30, 37, 58, 1],
+          ['l', 'G', 23, 31, 33, 41, 1.4], ['l', 'G', 41, 31, 31, 41, 1.4], ['e', 'E', 32, 35, 2, 2],
+          ['r', 'G', 22, 44, 42, 45]] },
+        { id: 'head', slot: 'head', pivot: [32, 27], body: true, shapes: [
+          ['p', 'W', [[22, 27], [25, 14], [31, 2], [38, 10], [43, 22], [42, 28], [23, 28]]],
+          ['l', 'G', 30, 4, 26, 21, 1.2], ['l', 'G', 33, 6, 39, 19, 1],
+          ['e', 'N', 35, 19, 6.5, 5.5], ['r', 'V', 32, 18, 40, 19]] },
+        { id: 'farShoulder', slot: 'arms', pivot: [18, 33], body: true, follow: 'farArm', shapes: [
+          ['e', 'W', 20, 31, 6.5, 4.5]] },
+        { id: 'nearArm', slot: 'arms', pivot: [44, 32], body: true, shapes: [
+          ['e', 'W', 44, 31, 7.5, 5], ['l', 'G', 39, 29, 49, 29, 1],
+          ['r', 'N', 43, 34, 50, 39], ['r', 'W', 49, 33, 51, 40], ['p', 'U', [[51, 34], [56, 35], [56, 40], [51, 40]]], ['e', 'U', 57.5, 37, 2.8, 2.8]] },
       ],
     },
   };
   const CLASS_KEYS = ['titan', 'hunter', 'warlock'];
-  const rowCache = new Map();
-  function guardianRows(key) {
-    if (!rowCache.has(key)) rowCache.set(key, rasterize(64, 64, GUARDIANS[key].shapes));
-    return rowCache.get(key);
-  }
+  const ARMOR_PART_SLOTS = ['head', 'chest', 'arms', 'legs', 'cls'];
   function guardianMats(key, elementColor, override) {
     const p = { ...GUARDIANS[key].pal, ...(override || {}) };
     const m = { V: { c: shadeHex(elementColor, 50), glow: true }, E: { c: elementColor, glow: true }, c: { c: shadeHex(p.C, -30), g: 'C' } };
     for (const k of ['W', 'R', 'N', 'U', 'G', 'B', 'C', 'L', 'S']) if (p[k]) m[k] = { c: p[k] };
     return m;
   }
+  const partCache = new Map();
+  function partRows(key, id) {
+    const ck = key + ':' + id;
+    if (!partCache.has(ck)) partCache.set(ck, rasterize(64, 64, GUARDIANS[key].parts.find(p => p.id === id).shapes));
+    return partCache.get(ck);
+  }
+  /* One part, shaded with its own outline. slotPal: { head: {W:..}, arms: {...}, ... } re-skins a slot
+   * (future armor-set looks) without touching the others. */
+  function shadePart(key, id, elementColor, slotPal) {
+    const part = GUARDIANS[key].parts.find(p => p.id === id);
+    return shadeRows(partRows(key, id), guardianMats(key, elementColor, slotPal && slotPal[part.slot]));
+  }
+  // Whole guardian at rest: parts overlaid back to front
+  function composeGuardian(key, elementColor, slotPal) {
+    let out = null;
+    for (const part of GUARDIANS[key].parts) {
+      const img = shadePart(key, part.id, elementColor, slotPal);
+      if (!out) out = { w: img.w, h: img.h, data: new Uint8ClampedArray(img.data.length) };
+      for (let i = 0; i < img.data.length; i += 4) if (img.data[i + 3]) out.data.set(img.data.subarray(i, i + 4), i);
+    }
+    return out;
+  }
+  // Legacy: all shapes in one raster (single-part shading)
+  function guardianRows(key) {
+    const ck = key + ':*';
+    if (!partCache.has(ck)) partCache.set(ck, rasterize(64, 64, GUARDIANS[key].parts.flatMap(p => p.shapes)));
+    return partCache.get(ck);
+  }
 
-  const api = { ramp, shadeHex, hexToHsl, hslToHex, shadeRows, rasterize, GUARDIANS, CLASS_KEYS, guardianRows, guardianMats, OUTLINE };
+  /* ---------------- motions ----------------
+   * Keyframes [k (0..1), pose offsets]. Offsets (sprite px / radians):
+   *   dx, dy: whole body · lean: torso rotation around the hip · na / fa: near / far arm rotation
+   *   nadx: near arm reach · nl / fl: near / far leg rotation · hd: head rotation */
+  const MOTIONS = {
+    shoot: { dur: 150, keys: [[0, {}], [0.25, { dx: -1.5, na: -0.22, lean: -0.04 }], [1, {}]] },
+    throw: { dur: 560, keys: [[0, {}], [0.38, { lean: -0.18, na: -2.6, fa: 0.4, dx: -2, hd: -0.08 }], [0.58, { lean: 0.22, na: 0.55, fa: -0.35, dx: 4, nl: -0.12, hd: 0.06 }], [1, {}]] },
+    punch: { dur: 480, keys: [[0, {}], [0.28, { lean: -0.1, na: 0.6, nadx: -5, dx: -3 }], [0.5, { lean: 0.24, na: -0.05, nadx: 7, dx: 30, dy: -10, fa: 0.5, nl: -0.25, fl: 0.2 }], [0.72, { lean: 0.15, dx: 26, dy: -8, nadx: 4 }], [1, {}]] },
+    cast: { dur: 640, keys: [[0, {}], [0.35, { na: -1.7, fa: -1.5, dy: -2, hd: -0.1 }], [0.7, { na: -1.6, fa: -1.4, dy: -2, hd: -0.1 }], [1, {}]] },
+    dodge: { dur: 420, keys: [[0, {}], [0.45, { dx: -18, lean: -0.15, dy: -2 }], [1, {}]] },
+    hit: { dur: 320, keys: [[0, {}], [0.2, { dx: -4, lean: -0.16, hd: -0.1 }], [1, {}]] },
+    super: { dur: 1500, keys: [[0, {}], [0.2, { dy: 4, lean: 0.12, na: 0.6, fa: 0.6, nl: 0.15, fl: -0.15 }], [0.42, { dy: -24, lean: -0.12, na: -2.3, fa: -2.1, hd: -0.15 }], [0.62, { dy: -26, lean: -0.1, na: -2.4, fa: -2.2, hd: -0.15 }], [0.76, { dy: 2, lean: 0.26, na: 0.45, fa: 0.35, nl: -0.2, fl: 0.2 }], [1, {}]] },
+  };
+  const ease = k => k * k * (3 - 2 * k);
+  function motionPose(type, k) {
+    const m = MOTIONS[type];
+    if (!m) return {};
+    const keys = m.keys;
+    let i = 0;
+    while (i < keys.length - 2 && k > keys[i + 1][0]) i++;
+    const [k0, a] = keys[i], [k1, b] = keys[i + 1];
+    const t = ease(Math.max(0, Math.min(1, (k - k0) / ((k1 - k0) || 1))));
+    const out = {};
+    for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) out[key] = (a[key] || 0) + ((b[key] || 0) - (a[key] || 0)) * t;
+    return out;
+  }
+
+  const api = { ramp, shadeHex, hexToHsl, hslToHex, shadeRows, rasterize, GUARDIANS, CLASS_KEYS, ARMOR_PART_SLOTS, guardianRows, guardianMats, shadePart, composeGuardian, MOTIONS, motionPose, OUTLINE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PixelArt = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);

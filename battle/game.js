@@ -1131,7 +1131,7 @@
     try { B.bg = act ? await Sprites.pixelatedBackground(img(act.img), 90, 160) : Sprites.gridBackground(90, 160); }
     catch { B.bg = Sprites.gridBackground(90, 160); }
     const vis = p.element === 'prism' ? 'prism' : p.element;
-    B.guardian = Sprites.guardianBattle(p.cls, vis);
+    B.guardian = Sprites.guardianRig(p.cls, vis); // part-based rig (animated)
     const gc = p.ghost ? await Sprites.iconColor(img(p.ghost.i)) : null;
     B.ghostSprite = Sprites.ghostSprite(vis, gc ? { A: gc, a: Sprites.shade(gc, -50) } : null);
     B.weapons = {};
@@ -1151,7 +1151,9 @@
       const cx = PX - dodge + dash * 62;
       return { x: cx - w / 2, y: PY - h - dash * 64, w, h, cx, dash };
     };
-    const handPos = () => { const b = pBox(); const [hx, hy] = B.guardian.hand; return { x: b.x + hx * PSC, y: b.y + hy * PSC }; };
+    const handPos = () => { if (B.handPt) return { x: B.handPt.x, y: B.handPt.y }; const b = pBox(); const [hx, hy] = B.guardian.hand; return { x: b.x + hx * PSC, y: b.y + hy * PSC }; };
+    // Character motions (pixelart.js MOTIONS): shoot / throw / punch / cast / dodge / hit / super
+    const setMotion = type => { B.motion = { type, t: 0, dur: PixelArt.MOTIONS[type].dur }; };
     const eBox = e => {
       const s = e.sprites?.[0];
       const sc = (e.holo ? 2.0 : 2.2) * e.scale * e.depth;
@@ -1270,11 +1272,12 @@
       for (let i = 0; i < n; i++) {
         if (e.hp <= 0) break;
         B.pAtkT = 1;
+        if (f.mode !== 'blade') setMotion('shoot');
         const hp0 = handPos(), b = eBox(e);
         const tx = e.x + rand(10) - 5, ty = b.cy + rand(10) - 5;
         if (f.mode === 'spread') { for (let k = 0; k < 7; k++) tracer(hp0.x, hp0.y - 6, tx + rand(28) - 14, ty + rand(22) - 11, color, 1); }
         else if (f.mode === 'arrow' || f.mode === 'explosive') lob(hp0.x, hp0.y, tx, ty, color, gap);
-        else if (f.mode === 'blade') B.pDash = 0.001;
+        else if (f.mode === 'blade') setMotion('punch');
         else tracer(hp0.x, hp0.y - 6, tx, ty, color, f.mode === 'beam' ? 2.5 : 1.5);
         await sleep(gap);
         if (f.mode === 'explosive') { ringFx(tx, ty, color, 36, 450); B.shake = 6; }
@@ -1309,15 +1312,17 @@
         log(`${c.name}${frameLabel(c)}! ${d.toLocaleString()} ダメージ`);
       } else if (c.id === 'mel') {
         const e = B.enemies[B.target], b = eBox(e);
-        B.pDash = 0.001;
-        await sleep(160);
+        setMotion('punch');
+        await sleep(240);
         ringFx(e.x, b.cy, color, 22, 300);
         B.fx.push({ type: 'slash', x: e.x, y: b.cy, color, t: 0, dur: 300 });
         const d = hit(e, p.atk * c.mult, c.el, c.brk, { ability: true });
         B.shake = 4;
         log(`${c.name}! ${d.toLocaleString()} ダメージ`);
-        await sleep(160);
+        await sleep(240);
       } else if (c.id === 'gre') {
+        setMotion('throw');
+        await sleep(320);
         const h = handPos();
         const ts = alive();
         const cx = ts.reduce((a, t) => a + t.x, 0) / ts.length, cy = ts.reduce((a, t) => a + eBox(t).cy, 0) / ts.length;
@@ -1331,12 +1336,12 @@
         log(`${c.name}! 合計 ${total.toLocaleString()} ダメージ`);
       } else if (c.id === 'cls') {
         const m = 1 + p.stats.cls / 100;
+        setMotion(p.cls === 1 ? 'dodge' : 'cast');
         if (p.cls === 0) {
           p.buffs.barricade = 2;
           B.fx.push({ type: 'wall', t: 0, dur: 99999, color });
           log(`${c.name}: 2ターンの間 被ダメージ 50% カット`);
         } else if (p.cls === 1) {
-          B.pDodge = 0.001;
           p.buffs.evade = 1; p.buffs.gunslinger = 1;
           log(`${c.name}: 次の攻撃を回避 & 次の通常攻撃が強化`);
         } else {
@@ -1358,6 +1363,7 @@
       p.superG = 0;
       banner(s?.n || 'SUPER');
       B.superFx = { t: 0, dur: 2100, color, name: s?.n || 'SUPER', icon: s };
+      setMotion('super');
       await sleep(1250);
       const ts = alive();
       for (const t of ts) { const b = eBox(t); ringFx(t.x, b.cy, color, 70, 700); burst(t.x, b.cy, color, 30, 5); }
@@ -1416,6 +1422,7 @@
           if (p.shield) { const ab = Math.min(p.shield, d); p.shield -= ab; d -= ab; if (ab) popup(PX + 14, PY - 104, `-${ab} 🛡`, '#c9a6ff'); }
           p.hp = Math.max(0, p.hp - d);
           B.pHitT = 1; B.shake = 5; B.hurtT = 1;
+          if (!B.motion) setMotion('hit');
           if (d) popup(PX, PY - 90, '-' + d, '#ff5d5d', d > p.maxHp * 0.2);
           addSuper(4);
           log(`${e.n} の攻撃! ${d} ダメージ`);
@@ -1702,29 +1709,33 @@
       if (B.pDash > 0) B.pDash = B.pDash + dt / 320 >= 1 ? 0 : B.pDash + dt / 320;
       if (B.pDodge > 0) B.pDodge = B.pDodge + dt / 420 >= 1 ? 0 : B.pDodge + dt / 420;
       if (B.heldT > 0) { B.heldT -= dt; if (B.heldT <= 0) B.held = 'kin'; }
-      const recoil = Math.sin(B.pAtkT * Math.PI) * 2;
-      const sc = 1 - b.dash * 0.25;
-      g.fillStyle = 'rgba(0,0,0,0.4)';
-      g.beginPath(); g.ellipse(b.cx, PY + 1, 26, 5, 0, 0, Math.PI * 2); g.fill();
-      if (B.pDodge > 0) { g.globalAlpha = 0.35; g.drawImage(B.guardian.sprite, PX - b.w / 2, b.y, b.w, b.h); g.globalAlpha = 1; }
-      if (!(B.pHitT > 0 && Math.floor(B.time / 60) % 2)) {
-        Sprites.drawLive(g, B.guardian.sprite, b.cx, PY - b.dash * 40 + recoil, b.w * sc, b.h * sc, B.time,
-          { breath: 0.016, sway: 0.35, lean: -recoil * 0.6 }); // no hem wave: feet stay planted
+      // Pose = idle (breathing, aim at the target) + current motion. Feet stay planted unless the motion moves the body.
+      let mp = {};
+      if (B.motion) {
+        B.motion.t += dt;
+        const k = B.motion.t / B.motion.dur;
+        if (k >= 1) B.motion = null; else mp = PixelArt.motionPose(B.motion.type, k);
       }
-      // Weapon in hand, aimed at the target
-      const wsp = B.weapons[B.held] || B.weapons.kin;
       const t = B.enemies[B.target];
-      if (wsp && t && b.dash === 0) {
-        const h = handPos(), tb = eBox(t);
-        const ang = Math.atan2(tb.cy - h.y, t.x - h.x);
-        g.save();
-        g.translate(h.x, h.y + recoil);
-        g.rotate(ang);
-        const wsc = PSC * 0.85;
-        g.drawImage(wsp.sprite, -wsp.gx * wsc - recoil * 2, -wsp.gy * wsc, wsp.sprite.width * wsc, wsp.sprite.height * wsc);
-        if (B.pAtkT > 0.5) { g.fillStyle = '#fff6c0'; g.globalAlpha = B.pAtkT; g.beginPath(); g.arc((wsp.sprite.width - wsp.gx) * wsc + 2, 0, 4 + B.pAtkT * 3, 0, Math.PI * 2); g.fill(); }
-        g.restore();
+      let aim = 0;
+      if (t && t.hp > 0) {
+        const tb = eBox(t);
+        const sx = b.x + B.guardian.layers.find(L => L.id === 'nearArm').pivot[0] * PSC, sy = b.y + B.guardian.layers.find(L => L.id === 'nearArm').pivot[1] * PSC;
+        aim = clamp(Math.atan2(tb.cy - sy, t.x - sx), -0.95, 0.3);
       }
+      const pose = {
+        dx: mp.dx || 0, dy: mp.dy || 0, lean: mp.lean || 0,
+        breath: Math.sin(B.time / 520) * 0.6,
+        na: aim + (mp.na || 0), nadx: mp.nadx || 0,
+        fa: Math.sin(B.time / 700) * 0.06 + (mp.fa || 0),
+        nl: mp.nl || 0, fl: mp.fl || 0, hd: Math.sin(B.time / 900) * 0.03 + (mp.hd || 0),
+      };
+      g.fillStyle = 'rgba(0,0,0,0.4)';
+      g.beginPath(); g.ellipse(b.cx + pose.dx * PSC, PY + 1, 26 * Math.max(0.5, 1 - Math.abs(pose.dy) / 40), 5, 0, 0, Math.PI * 2); g.fill();
+      const wsp = B.weapons[B.held] || B.weapons.kin;
+      const weapon = wsp ? { sprite: wsp.sprite, gx: wsp.gx, gy: wsp.gy, scale: 0.85, flash: B.pAtkT > 0.5 ? B.pAtkT : 0 } : null;
+      const ox = PX - 33 * PSC, oy = PY - 62 * PSC;
+      if (!(B.pHitT > 0 && Math.floor(B.time / 60) % 2)) B.handPt = Sprites.drawRig(g, B.guardian, ox, oy, PSC, pose, weapon);
       // Ghost
       const gy = b.y + 18 + Math.sin(B.time / 380) * 4;
       g.drawImage(B.ghostSprite, b.x - 2, gy - 14, 16, 16);
