@@ -685,6 +685,105 @@
     const p = { ...GUARDIAN_PALETTES.ghost, ...(override || {}) };
     return renderShaded(GHOST, { A: { c: p.A }, M: { c: p.M }, V: { c: el, glow: true } }, `ghost:${element}:${JSON.stringify(override || {})}`);
   }
+  /* ---------------- Illustrated (non-pixel) rendering ----------------
+   * Draws a shape list (pixelart.js format, 48-unit grid) as a smooth, high-resolution illustration:
+   * per-shape volume gradients lit from the top-left, a rim light, soft contact shadows cast onto the
+   * shapes behind, dark line art and bloom on glowing materials. The result is shown downscaled. */
+  const ILLUS_SCALE = 6;
+  const LIGHT = [-0.55, -0.83]; // key light direction (toward the light)
+  function shapePath(s) {
+    const P = new Path2D();
+    const [t] = s;
+    if (t === 'e') P.ellipse(s[2], s[3], s[4], s[5], 0, 0, Math.PI * 2);
+    else if (t === 'r') P.rect(s[2], s[3], s[4] - s[2] + 1, s[5] - s[3] + 1);
+    else if (t === 'p') { s[2].forEach(([x, y], i) => i ? P.lineTo(x, y) : P.moveTo(x, y)); P.closePath(); }
+    else if (t === 'l' || t === 'k') {
+      const [x0, y0, x1, y1] = [s[2], s[3], s[4], s[5]], r = (s[6] || 1) / 2;
+      const a = Math.atan2(y1 - y0, x1 - x0);
+      P.arc(x0, y0, r, a + Math.PI / 2, a - Math.PI / 2);
+      P.arc(x1, y1, r, a - Math.PI / 2, a + Math.PI / 2);
+      P.closePath();
+    }
+    return P;
+  }
+  function shapeBox(s) {
+    const [t] = s;
+    if (t === 'e') return [s[2] - s[4], s[3] - s[5], s[2] + s[4], s[3] + s[5]];
+    if (t === 'r') return [s[2], s[3], s[4] + 1, s[5] + 1];
+    if (t === 'p') { const xs = s[2].map(q => q[0]), ys = s[2].map(q => q[1]); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
+    const r = (s[6] || 1) / 2;
+    return [Math.min(s[2], s[4]) - r, Math.min(s[3], s[5]) - r, Math.max(s[2], s[4]) + r, Math.max(s[3], s[5]) + r];
+  }
+  function volumeFill(g, s, rp) {
+    const [t] = s, [x0, y0, x1, y1] = shapeBox(s);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, hw = (x1 - x0) / 2, hh = (y1 - y0) / 2;
+    let grad;
+    if (t === 'e') {
+      // sphere: off-center highlight
+      grad = g.createRadialGradient(cx + LIGHT[0] * hw * 0.45, cy + LIGHT[1] * hh * 0.45, 0, cx, cy, Math.max(hw, hh) * 1.15);
+      grad.addColorStop(0, rp[4]); grad.addColorStop(0.35, rp[3]); grad.addColorStop(0.7, rp[2]); grad.addColorStop(1, rp[0]);
+    } else if (t === 'l') {
+      // cylinder: shade across the limb, lit side toward the light
+      const dx = s[4] - s[2], dy = s[5] - s[3], len = Math.hypot(dx, dy) || 1;
+      let nx = -dy / len, ny = dx / len;
+      if (nx * LIGHT[0] + ny * LIGHT[1] < 0) { nx = -nx; ny = -ny; }
+      const r = (s[6] || 1) / 2, mx = (s[2] + s[4]) / 2, my = (s[3] + s[5]) / 2;
+      grad = g.createLinearGradient(mx + nx * r, my + ny * r, mx - nx * r, my - ny * r);
+      grad.addColorStop(0, rp[4]); grad.addColorStop(0.3, rp[3]); grad.addColorStop(0.65, rp[2]); grad.addColorStop(1, rp[0]);
+    } else {
+      // plates: diagonal falloff from the lit corner
+      const d = Math.max(hw, hh);
+      grad = g.createLinearGradient(cx + LIGHT[0] * d, cy + LIGHT[1] * d, cx - LIGHT[0] * d, cy - LIGHT[1] * d);
+      grad.addColorStop(0, rp[4]); grad.addColorStop(0.35, rp[3]); grad.addColorStop(0.7, rp[2]); grad.addColorStop(1, rp[1]);
+    }
+    return grad;
+  }
+  function illustrate(shapes, mats, outline, key) {
+    if (key && cache.has(key)) return cache.get(key);
+    const S = ILLUS_SCALE, N = 50;
+    const mk = () => { const c = document.createElement('canvas'); c.width = N * S; c.height = N * S; return c; };
+    const out = mk(), g = out.getContext('2d');
+    const tmp = mk(), t = tmp.getContext('2d');
+    const rim = mk(), r = rim.getContext('2d');
+    const glows = [];
+    const unit = c => { c.setTransform(S, 0, 0, S, S, S); }; // 1-unit padding
+    for (const s of shapes) {
+      const ch = s[0] === 'k' ? 'K' : s[1];
+      const m = mats[ch] || (ch === 'K' ? { c: outline, line: true } : null);
+      if (!m) continue;
+      const P = shapePath(s);
+      if (m.glow) { glows.push([P, m.c]); continue; }
+      const rp = PixelArt.ramp(m.c);
+      // 1) contact shadow cast by this shape onto what is already drawn (only on existing pixels)
+      g.save(); unit(g);
+      g.globalCompositeOperation = 'source-atop';
+      g.filter = `blur(${S * 0.9}px)`;
+      g.translate(0.9, 1.2); g.fillStyle = 'rgba(8,6,16,0.55)'; g.fill(P);
+      g.restore();
+      // 2) the shape itself: volume gradient + rim light + line art, composed off-screen
+      t.setTransform(1, 0, 0, 1, 0, 0); t.clearRect(0, 0, tmp.width, tmp.height); unit(t);
+      t.fillStyle = m.line ? outline : volumeFill(t, s, rp); t.fill(P);
+      if (!m.line) {
+        r.setTransform(1, 0, 0, 1, 0, 0); r.clearRect(0, 0, rim.width, rim.height); unit(r);
+        r.fillStyle = PixelArt.shadeHex(rp[4], 40); r.fill(P);
+        r.globalCompositeOperation = 'destination-out'; r.translate(0.55, 0.75); r.fill(P); r.globalCompositeOperation = 'source-over';
+        t.save(); t.setTransform(1, 0, 0, 1, 0, 0); t.globalAlpha = 0.6; t.globalCompositeOperation = 'source-atop'; t.drawImage(rim, 0, 0); t.restore();
+        t.lineJoin = 'round'; t.lineWidth = 0.42; t.strokeStyle = outline === OUTLINE ? PixelArt.shadeHex(rp[0], -45) : outline; t.stroke(P);
+      }
+      g.drawImage(tmp, 0, 0);
+    }
+    // 3) glowing eyes / cores / weapon emitters with bloom
+    for (const [P, c] of glows) {
+      g.save(); unit(g);
+      g.shadowColor = c; g.shadowBlur = S * 3;
+      g.fillStyle = c; g.fill(P);
+      g.shadowBlur = 0; g.fillStyle = 'rgba(255,255,255,0.65)'; g.save(); g.clip(P); g.translate(-0.3, -0.3); g.fill(P); g.restore();
+      g.restore();
+    }
+    out.illus = true;
+    if (key) cache.set(key, out);
+    return out;
+  }
   // glow: 0..2 — eye brightness step (cycled for a pulsing glow)
   function enemySprite(tpl, faction, element, palOverride, glow = 0) {
     const p = { ...FACTION_PALETTES[faction], ...(palOverride || {}) };
@@ -694,7 +793,9 @@
       S: { c: p.S }, s: { c: p.s, g: 'S' }, C: { c: p.C }, c: { c: p.c, g: 'C' }, G: { c: p.G },
       E: { c: glow ? shade(p.E, glow * 40) : p.E, glow: true }, W: { c: W, glow: true },
     };
-    // 48px shape-built art (pixelart.js ENEMY_SHAPES); legacy 32px maps as fallback
+    const key = `e:${tpl}:${faction}:${element}:${glow}:${JSON.stringify(palOverride || {})}`;
+    // Illustrated high-res art from pixelart.js ENEMY_SHAPES (shown downscaled); legacy 32px maps as fallback
+    if (PixelArt.ENEMY_SHAPES[tpl]) return illustrate(PixelArt.ENEMY_SHAPES[tpl], mats, p.K || OUTLINE, 'i' + key);
     return renderShaded(PixelArt.enemyRows(tpl) || ENEMY[tpl] || ENEMY.thrall, mats, `e:${tpl}:${faction}:${element}:${glow}:${JSON.stringify(palOverride || {})}`, p.K || OUTLINE);
   }
   function weaponSprite(subType, element) {

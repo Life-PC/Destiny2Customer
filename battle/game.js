@@ -1673,9 +1673,17 @@
       const glow = Math.floor((Math.sin(B.time / 260 + e.phase) + 1) * 1.5) % 3;
       const spr = e.sprites[glow] || e.sprites[0];
       const sink = e.hp <= 0 ? (1 - e.dieT) * 10 : 0;
-      Sprites.drawLive(g, spr, e.x, feetY + sink, w, h, B.time, { phase: e.phase, breath: 0.03, sway: 1.1, speed: 0.0028 });
+      if (spr.illus) {
+        // smooth illustration: whole-image breathing + top sway (row slicing would band when downscaled)
+        const br = 1 + Math.sin(B.time * 0.0028 + e.phase) * 0.025;
+        const sw = Math.sin(B.time * 0.0021 + e.phase) * 1.1 / h;
+        g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+        g.transform(1, 0, -sw, br, e.x, feetY + sink);
+        g.drawImage(spr, -w / 2, -h, w, h);
+        g.restore();
+      } else Sprites.drawLive(g, spr, e.x, feetY + sink, w, h, B.time, { phase: e.phase, breath: 0.03, sway: 1.1, speed: 0.0028 });
       if (e.hitT > 0) {
-        g.globalCompositeOperation = 'lighter'; g.globalAlpha = e.hitT * 0.75;
+        g.globalCompositeOperation = 'lighter'; g.globalAlpha = e.hitT * 0.75; g.imageSmoothingEnabled = !!spr.illus;
         g.drawImage(spr, e.x - w / 2, feetY - h, w, h);
         e.hitT = Math.max(0, e.hitT - dt / 180);
       }
