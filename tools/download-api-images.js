@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /* Download the Bungie API icons used by the game into local folders (reference images for art).
  *   node tools/download-api-images.js [outDir=api-images]
- * Layout:
+ * Layout (same tree under サムネイル/ = item icons and スクリーンショット/ = item screenshots):
  *   防具/<クラス>/<シリーズ>/<部位>_<名前>.jpg   (exotics → 防具/<クラス>/エキゾチック)
  *   武器/<武器種>_<名前>.jpg
- *   ゴースト/<名前>.jpg
+ *   ゴースト/<名前>.jpg   (screenshots by the hash naming rule; missing ones are skipped)
  * Source: data/manifest-ja.json (built by tools/build-manifest.js). Duplicates (same name) are skipped. */
 const fs = require('fs');
 const path = require('path');
@@ -30,23 +30,24 @@ function series(it) {
 
 const jobs = [];
 const seen = new Set();
-const add = (dir, name, icon) => {
-  if (!icon) return;
-  const ext = path.extname(icon) || '.jpg';
-  const file = path.join(OUT, ...dir.map(safe), safe(name) + ext);
+const addOne = (kind, dir, name, src, optional) => {
+  if (!src) return;
+  const ext = path.extname(src) || '.jpg';
+  const file = path.join(OUT, kind, ...dir.map(safe), safe(name) + ext);
   if (seen.has(file)) return;
   seen.add(file);
-  jobs.push({ url: BUNGIE + icon, file });
+  jobs.push({ url: BUNGIE + src, file, optional });
 };
+const add = (dir, name, icon, shot, optional) => { addOne('サムネイル', dir, name, icon); addOne('スクリーンショット', dir, name, shot, optional); };
 
 for (const it of m.items) {
   if (it.it === 2 && SLOT[it.bk] && CLASS[it.cl] && it.tt >= 2) {
-    add(['防具', CLASS[it.cl], series(it)], `${SLOT[it.bk]}_${it.n}`, it.i);
+    add(['防具', CLASS[it.cl], series(it)], `${SLOT[it.bk]}_${it.n}`, it.i, it.s);
   } else if (it.it === 3 && it.tt >= 2) {
-    add(['武器'], `${it.t || '武器'}_${it.n}`, it.i);
+    add(['武器'], `${it.t || '武器'}_${it.n}`, it.i, it.s);
   }
 }
-for (const gh of m.ghosts || []) add(['ゴースト'], gh.n, gh.i);
+for (const gh of m.ghosts || []) add(['ゴースト'], gh.n, gh.i, gh.s || `/common/destiny2_content/screenshots/${gh.h}.jpg`, !gh.s);
 
 function get(url, file, tries = 3) {
   return new Promise((resolve, reject) => {
@@ -62,14 +63,14 @@ function get(url, file, tries = 3) {
 (async () => {
   const todo = jobs.filter(j => !fs.existsSync(j.file));
   console.log(`${jobs.length} images (${todo.length} to download) → ${OUT}`);
-  let done = 0, failed = 0, i = 0;
+  let done = 0, failed = 0, skipped = 0, i = 0;
   const worker = async () => {
     while (i < todo.length) {
       const j = todo[i++];
-      try { await get(j.url, j.file); } catch (e) { failed++; console.warn('failed', e.message); }
+      try { await get(j.url, j.file); } catch (e) { if (j.optional) skipped++; else { failed++; console.warn('failed', e.message); } }
       if (++done % 200 === 0) console.log(`${done}/${todo.length}`);
     }
   };
   await Promise.all(Array.from({ length: 12 }, worker));
-  console.log(`done: ${done - failed} ok, ${failed} failed`);
+  console.log(`done: ${done - failed - skipped} ok, ${failed} failed, ${skipped} not available`);
 })();
