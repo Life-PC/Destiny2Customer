@@ -738,6 +738,72 @@
     }
     return grad;
   }
+  /* Realistic shading for one shape: rasterize its mask, build a height field from the distance to its
+   * edge (domes for ellipses/limbs, bevelled plates for flat parts), derive normals and light them
+   * (Blinn-Phong + cool rim/back light + material grain). Written into `t` at the shape's bounding box. */
+  const L3 = (() => { const v = [-0.5, -0.7, 0.75], n = Math.hypot(...v); return v.map(x => x / n); })();
+  const H3 = (() => { const v = [L3[0], L3[1], L3[2] + 1], n = Math.hypot(...v); return v.map(x => x / n); })();
+  const hash = (x, y) => { const h = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return h - Math.floor(h); };
+  const vnoise = (x, y) => {
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+    const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  };
+  function litShape(t, mg, mc, P, s, m, S, unit) {
+    const W = mc.width, Hh = mc.height;
+    mg.setTransform(1, 0, 0, 1, 0, 0); mg.clearRect(0, 0, W, Hh); unit(mg);
+    mg.fillStyle = '#fff'; mg.fill(P);
+    const [bx0, by0, bx1, by1] = shapeBox(s);
+    const x0 = Math.max(0, Math.floor((bx0 + 1) * S) - 2), y0 = Math.max(0, Math.floor((by0 + 1) * S) - 2);
+    const x1 = Math.min(W, Math.ceil((bx1 + 1) * S) + 2), y1 = Math.min(Hh, Math.ceil((by1 + 1) * S) + 2);
+    const w = x1 - x0, h = y1 - y0;
+    if (w <= 0 || h <= 0) return;
+    const A = mg.getImageData(x0, y0, w, h).data;
+    // chamfer distance to the outside
+    const D = new Float32Array(w * h), INF = 1e6;
+    for (let i = 0; i < w * h; i++) D[i] = A[i * 4 + 3] > 127 ? INF : 0;
+    const at = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : D[y * w + x]);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x; if (!D[i]) continue;
+      D[i] = Math.min(D[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + 1.414, at(x + 1, y - 1) + 1.414);
+    }
+    let maxD = 0;
+    for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x; if (!D[i]) continue;
+      D[i] = Math.min(D[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + 1.414, at(x - 1, y + 1) + 1.414);
+      if (D[i] > maxD) maxD = D[i];
+    }
+    const round = s[0] === 'e' || s[0] === 'l';
+    const R = round ? Math.max(1, maxD) : Math.min(Math.max(1, maxD), S * 1.7);
+    const Hf = new Float32Array(w * h);
+    for (let i = 0; i < w * h; i++) { const q = Math.min(D[i] / R, 1); Hf[i] = R * Math.sqrt(1 - (1 - q) * (1 - q)); }
+    const hv = (x, y) => Hf[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+    const cn = parseInt(m.c.slice(1), 16), br = cn >> 16, bg = (cn >> 8) & 255, bb = cn & 255;
+    const spec = m.spec ?? 0.45, shin = m.shin ?? 18, grain = m.grain ?? 0.07;
+    const img = t.createImageData(w, h), o = img.data;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = y * w + x, a = A[i * 4 + 3]; if (!a) continue;
+      let nx = -(hv(x + 1, y) - hv(x - 1, y)) * 0.5, ny = -(hv(x, y + 1) - hv(x, y - 1)) * 0.5, nz = 1;
+      const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+      const dif = Math.max(0, nx * L3[0] + ny * L3[1] + nz * L3[2]);
+      const sp = Math.pow(Math.max(0, nx * H3[0] + ny * H3[1] + nz * H3[2]), shin) * spec;
+      const rimL = Math.pow(1 - nz, 2.2) * Math.max(0, nx * 0.7 + ny * 0.2) * 0.55; // cool back light from the right
+      const gx = x0 + x, gy = y0 + y;
+      const n = (vnoise(gx / (S * 1.2), gy / (S * 1.2)) - 0.5) * 2 * grain + (hash(gx, gy) - 0.5) * grain * 0.6;
+      const lv = (0.3 + dif * 0.85) * (1 + n) * (1 - (gy / Hh) * 0.18);
+      const cool = (1 - dif) * 0.18;
+      o[i * 4] = Math.min(255, br * lv * (1 - cool) + 40 * cool + 255 * sp + 150 * rimL);
+      o[i * 4 + 1] = Math.min(255, bg * lv * (1 - cool) + 55 * cool + 250 * sp + 190 * rimL);
+      o[i * 4 + 2] = Math.min(255, bb * lv * (1 - cool) + 85 * cool + 240 * sp + 255 * rimL);
+      o[i * 4 + 3] = a;
+    }
+    t.save(); t.setTransform(1, 0, 0, 1, 0, 0);
+    mc.width = mc.width; // reuse the rim canvas as scratch for the lit tile
+    mc.getContext('2d').putImageData(img, x0, y0);
+    t.drawImage(mc, 0, 0);
+    t.restore();
+  }
   function illustrate(shapes, mats, outline, key) {
     if (key && cache.has(key)) return cache.get(key);
     const S = ILLUS_SCALE, N = 50;
@@ -760,15 +826,13 @@
       g.filter = `blur(${S * 0.9}px)`;
       g.translate(0.9, 1.2); g.fillStyle = 'rgba(8,6,16,0.55)'; g.fill(P);
       g.restore();
-      // 2) the shape itself: volume gradient + rim light + line art, composed off-screen
+      // 2) the shape itself, lit per pixel from its height field (realistic mode), plus soft line art
       t.setTransform(1, 0, 0, 1, 0, 0); t.clearRect(0, 0, tmp.width, tmp.height); unit(t);
-      t.fillStyle = m.line ? outline : volumeFill(t, s, rp); t.fill(P);
-      if (!m.line) {
-        r.setTransform(1, 0, 0, 1, 0, 0); r.clearRect(0, 0, rim.width, rim.height); unit(r);
-        r.fillStyle = PixelArt.shadeHex(rp[4], 40); r.fill(P);
-        r.globalCompositeOperation = 'destination-out'; r.translate(0.55, 0.75); r.fill(P); r.globalCompositeOperation = 'source-over';
-        t.save(); t.setTransform(1, 0, 0, 1, 0, 0); t.globalAlpha = 0.6; t.globalCompositeOperation = 'source-atop'; t.drawImage(rim, 0, 0); t.restore();
-        t.lineJoin = 'round'; t.lineWidth = 0.42; t.strokeStyle = outline === OUTLINE ? PixelArt.shadeHex(rp[0], -45) : outline; t.stroke(P);
+      if (m.line) { t.fillStyle = outline; t.fill(P); }
+      else {
+        litShape(t, r, rim, P, s, m, S, unit);
+        unit(t); t.lineJoin = 'round'; t.lineWidth = 0.3; t.globalAlpha = 0.7;
+        t.strokeStyle = outline === OUTLINE ? PixelArt.shadeHex(rp[0], -50) : outline; t.stroke(P); t.globalAlpha = 1;
       }
       g.drawImage(tmp, 0, 0);
     }
@@ -793,9 +857,15 @@
       S: { c: p.S }, s: { c: p.s, g: 'S' }, C: { c: p.C }, c: { c: p.c, g: 'C' }, G: { c: p.G },
       E: { c: glow ? shade(p.E, glow * 40) : p.E, glow: true }, W: { c: W, glow: true },
     };
+    // surface response for the realistic renderer: metal shines, cloth is matte and grainy
+    const metal = faction === 'vex';
+    for (const k of ['B', 'b', 'S', 's', 'H']) Object.assign(mats[k], metal ? { spec: 0.95, shin: 34, grain: 0.05 } : faction === 'hive' ? { spec: 0.3, shin: 14, grain: 0.1 } : { spec: 0.55, shin: 22, grain: 0.06 });
+    Object.assign(mats.G, { spec: 0.9, shin: 42, grain: 0.04 });
+    Object.assign(mats.D, { spec: 0.25, shin: 12 });
+    for (const k of ['C', 'c']) Object.assign(mats[k], { spec: 0.05, shin: 6, grain: 0.16 });
     const key = `e:${tpl}:${faction}:${element}:${glow}:${JSON.stringify(palOverride || {})}`;
     // Illustrated high-res art from pixelart.js ENEMY_SHAPES (shown downscaled); legacy 32px maps as fallback
-    if (PixelArt.ENEMY_SHAPES[tpl]) return illustrate(PixelArt.ENEMY_SHAPES[tpl], mats, p.K || OUTLINE, 'i' + key);
+    if (PixelArt.ENEMY_SHAPES[tpl]) return illustrate(PixelArt.ENEMY_SHAPES[tpl], mats, p.K || OUTLINE, 'r' + key);
     return renderShaded(PixelArt.enemyRows(tpl) || ENEMY[tpl] || ENEMY.thrall, mats, `e:${tpl}:${faction}:${element}:${glow}:${JSON.stringify(palOverride || {})}`, p.K || OUTLINE);
   }
   function weaponSprite(subType, element) {
