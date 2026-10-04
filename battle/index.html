@@ -664,6 +664,9 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 .hub .M-traveler span { position: absolute; left: 50%; top: 112%; transform: translateX(-50%); white-space: nowrap; font: 700 0.85cqw 'Rajdhani', sans-serif; letter-spacing: 0.6cqw; color: #9aa6bd; }
 .hub .M-planet { position: absolute; transform: translate(-4.25cqw, -50%); display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 1.2cqw; background: none; border: 0; cursor: pointer; text-align: left; }
 .hub .M-planet i { grid-row: span 2; width: 8.5cqw; height: 8.5cqw; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--b), var(--a) 45%, var(--d) 100%); box-shadow: inset -1.2cqw -1cqw 2cqw rgba(0,0,0,0.6), 0 0 1.8cqw color-mix(in srgb, var(--a) 50%, transparent); transition: transform 200ms; }
+.hub .M-planet i, .hub .M-traveler { background: var(--img) center / 128% no-repeat, radial-gradient(circle at 35% 30%, var(--b), var(--a) 45%, var(--d) 100%); }
+.hub .M-planet i { box-shadow: 0 0 1.8cqw color-mix(in srgb, var(--a) 40%, transparent); }
+.hub .M-traveler { --img: url(art/ui/planet_traveler.webp); --a: #d8dbe2; --b: #ffffff; --d: #8e929b; }
 .hub .M-planet b { font: 700 1.2cqw 'Rajdhani', sans-serif; letter-spacing: 0.6cqw; }
 .hub .M-planet small { font: 600 0.8cqw 'Noto Sans JP', sans-serif; color: #9aa6bd; }
 .hub .M-planet.sel i { transform: scale(1.12); outline: 0.2cqw solid #e7c25a; outline-offset: 0.6cqw; }
@@ -806,10 +809,10 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js?v=27"></script>
-<script src="pixelart.js?v=27"></script>
-<script src="sprites.js?v=27"></script>
-<script src="content.js?v=27"></script>
-<script src="game.js?v=27"></script>
+<script src="../manifest-trim.js?v=28"></script>
+<script src="pixelart.js?v=28"></script>
+<script src="sprites.js?v=28"></script>
+<script src="content.js?v=28"></script>
+<script src="game.js?v=28"></script>
 </body>
 </html>

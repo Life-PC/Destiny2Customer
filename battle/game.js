@@ -1280,7 +1280,7 @@
       <div class="H-ptitle big">${svgI(NAV[1][2])}MODE SELECT</div>
       <div class="M-orbit"><i class="o1"></i><i class="o2"></i>
         <div class="M-traveler"><span>THE TRAVELER</span></div>
-        ${MODES.map(m => `<button type="button" class="M-planet ${m.k === sel.k ? 'sel' : ''} ${m.open() ? '' : 'locked'}" data-k="${m.k}" style="left:${m.x}%;top:${m.y}%;--a:${m.c[0]};--b:${m.c[1]};--d:${m.c[2]}">
+        ${MODES.map(m => `<button type="button" class="M-planet ${m.k === sel.k ? 'sel' : ''} ${m.open() ? '' : 'locked'}" data-k="${m.k}" style="left:${m.x}%;top:${m.y}%;--a:${m.c[0]};--b:${m.c[1]};--d:${m.c[2]};--img:url(art/ui/planet_${m.k}.webp)">
           <i></i><b>${m.n}</b><small>${m.open() ? m.jp : m.lock}</small></button>`).join('')}
       </div>
       <aside class="H-panel M-info">
