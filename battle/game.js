@@ -95,7 +95,7 @@
     Data.glimmerIcon = m.misc?.glimmer?.i || '';
     const seen = new Set();
     for (const it of m.items) {
-      if (it.tt !== 5 && it.tt !== 6) continue;
+      if (!(it.tt >= 2 && it.tt <= 6)) continue;
       const slot = SLOT_OF_BUCKET[it.bk];
       if (!slot || (it.it === 3 && !it.st) || (it.it !== 2 && it.it !== 3)) continue;
       const key = `${it.n}|${it.bk}|${it.cl ?? ''}`;
@@ -192,6 +192,56 @@
     return up;
   }
 
+  /* ===================== item rarity =====================
+   * D2 tierType → ★: Basic(2)=★1, Common(3)=★2, Rare(4)=★3, Legendary(5)=★4, Exotic(6)=★5.
+   * Duplicates limit-break (+5% each, max 4); an exotic at limit break 4 becomes ★6 (rainbow MAX). */
+  const TIER = {
+    2: { n: 'ベーシック', star: 1, mult: 0.8, stat: [18, 8] },
+    3: { n: 'コモン', star: 2, mult: 0.9, stat: [28, 8] },
+    4: { n: 'レア', star: 3, mult: 1.0, stat: [40, 10] },
+    5: { n: 'レジェンダリー', star: 4, mult: 1.15, stat: [56, 14] },
+    6: { n: 'エキゾチック', star: 5, mult: 1.3, stat: [66, 12] },
+  };
+  const MAX_LB = 4;
+  const itemStars = (def, inv) => (TIER[def?.tt]?.star || 1) + (def?.tt === 6 && (inv?.lb || 0) >= MAX_LB ? 1 : 0);
+  const itemMult = (def, inv) => (TIER[def?.tt]?.mult || 1) * (1 + 0.05 * (inv?.lb || 0));
+  function weightedTier(weights) {
+    let x = Math.random() * Object.values(weights).reduce((a, b) => a + b, 0);
+    for (const [t, w] of Object.entries(weights)) { x -= w; if (x <= 0) return +t; }
+    return +Object.keys(weights).pop();
+  }
+  // Gacha rates: ★2 45% / ★3 35% / ★4 17% / ★5 3%; minTier (10th pull) re-weights to ★3+
+  const GACHA_TIERS = { 3: 45, 4: 35, 5: 17, 6: 3 };
+  function rollGearItem(kind, forceExotic, minTier = 0) {
+    if (kind === 'ghost') {
+      const ex = forceExotic || Math.random() < 0.15;
+      const pool = Data.ghosts.filter(gh => gh.tt === (ex ? 6 : 5));
+      return pick(pool.length ? pool : Data.ghosts);
+    }
+    const w = Object.fromEntries(Object.entries(GACHA_TIERS).filter(([t]) => +t >= minTier));
+    const tt = forceExotic ? 6 : weightedTier(w);
+    const slot = pick(kind === 'weapon' ? ['kin', 'ene', 'pow'] : ARMOR_SLOTS);
+    let pool = (Data.pool[slot] || []).filter(it => it.tt === tt);
+    if (!pool.length) pool = (Data.pool[slot] || []).filter(it => it.tt >= 3);
+    return pick(pool);
+  }
+  // Stage drop rarity rises with the stage level (no legendaries in the opening stages)
+  function dropTable(st) {
+    if (st.drop?.pool === 'exotic') return { w: { 6: 1 }, label: '★5' };
+    const lv = st.lv;
+    if (lv <= 1.5) return { w: { 3: 70, 4: 30 }, label: '★2〜★3' };
+    if (lv <= 2.5) return { w: { 3: 40, 4: 50, 5: 10 }, label: '★2〜★4' };
+    if (lv <= 4) return { w: { 4: 60, 5: 35, 6: 5 }, label: '★3〜★5' };
+    return { w: { 4: 30, 5: 60, 6: 10 }, label: '★3〜★5' };
+  }
+  function rollDropItem(st) {
+    const kind = st.drop.pool === 'exotic' ? (Math.random() < 0.5 ? 'weapon' : 'armor') : st.drop.pool;
+    const tt = weightedTier(dropTable(st).w);
+    const slot = pick(kind === 'weapon' ? ['kin', 'ene', 'pow'] : ARMOR_SLOTS);
+    const pool = (Data.pool[slot] || []).filter(it => it.tt === tt);
+    return pick(pool.length ? pool : (Data.pool[slot] || []));
+  }
+
   /* ===================== save ===================== */
   let S = null;
   function save() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { console.warn(e); } }
@@ -200,24 +250,25 @@
     if (!S || S.v !== 1) S = null;
   }
   function newSave(cls) {
-    S = { v: 1, glimmer: 1000, nextId: 1, inv: [], jobs: [], activeJob: null, loadout: { 0: {}, 1: {}, 2: {} }, cleared: {}, prologue: false };
+    S = { v: 1, glimmer: 1000, nextId: 1, inv: [], jobs: [], activeJob: null, loadout: { 0: {}, 1: {}, 2: {} }, cleared: {}, prologue: false, shards: {}, fav: {} };
     const j = rollJob(cls, 3);
     S.jobs.push(j); S.activeJob = j.id;
     // Starter weapons: primary-ammo kinetic + energy, any power weapon
+    // Starter weapons are low rarity (★1〜★2); better gear comes from quests and engrams
     const starter = [
-      ['kin', it => it.tt === 5 && it.am === 1],
-      ['ene', it => it.tt === 5 && it.am === 1],
-      ['pow', it => it.tt === 5],
+      ['kin', it => it.tt <= 3 && it.am === 1],
+      ['ene', it => it.tt <= 3 && it.am === 1],
+      ['pow', it => it.tt <= 3],
     ];
     for (const [slot, f] of starter) {
-      const it = pick((Data.pool[slot] || []).filter(f));
+      const it = pick((Data.pool[slot] || []).filter(f)) || pick((Data.pool[slot] || []).filter(x => x.tt <= 4));
       if (it) { const inv = addItem(it, 'start'); equipWeapon(slot, inv.id); }
     }
     // Starter armor: one full legendary armor series per class (jobs of any class can be pulled)
     const starterGhost = pick(Data.ghosts.filter(gh => gh.tt === 5)) || Data.ghosts[0];
     if (starterGhost) S.ghost = addItem(starterGhost, 'start').id;
     for (const c of [0, 1, 2]) {
-      for (const piece of starterArmorSet(c)) {
+      for (const piece of starterArmor(c)) {
         const inv = addItem(piece, 'start');
         S.loadout[c][SLOT_OF_BUCKET[piece.bk]] = inv.id;
       }
@@ -227,6 +278,10 @@
   // Weapons are shared by all classes (as in Destiny 2); armor is per class
   const isWeaponSlot = slot => slot === 'kin' || slot === 'ene' || slot === 'pow';
   function equipWeapon(slot, id) { for (const c of [0, 1, 2]) { if (id) S.loadout[c][slot] = id; else delete S.loadout[c][slot]; } }
+  // Starter armor: one ★1〜★2 piece per slot (armor series are legendary → a mid-game goal)
+  function starterArmor(cls) {
+    return ARMOR_SLOTS.map(slot => pick((Data.pool[slot] || []).filter(d => d.tt <= 3 && (d.cl === cls || d.cl === 3)))).filter(Boolean);
+  }
   function starterArmorSet(cls) {
     const candidates = [];
     for (const [hash, set] of Object.entries(Data.sets)) {
@@ -242,7 +297,8 @@
     return candidates.length ? pick(candidates) : [];
   }
   function rollArmorStats(tt) {
-    const total = tt === 6 ? 66 + rand(12) : 56 + rand(14);
+    const [base, spread] = (TIER[tt] || TIER[4]).stat;
+    const total = base + rand(spread);
     const keys = Object.values(STAT);
     const w = keys.map(() => Math.random() ** 2 + 0.08);
     const sum = w.reduce((a, b) => a + b, 0);
@@ -257,6 +313,12 @@
     return inv;
   }
   const invById = id => S.inv.find(x => x.id === id);
+  // Gacha / drop: a duplicate of an owned item limit-breaks it instead of adding a copy
+  function grantItem(def, src) {
+    const own = S.inv.find(x => x.h === def.h && x.src !== 'd2' && (x.lb || 0) < MAX_LB);
+    if (own && (def.it === 2 || def.it === 3)) { own.lb = (own.lb || 0) + 1; return { def, inv: own, dup: true }; }
+    return { def, inv: addItem(def, src), dup: false };
+  }
 
   /* ===================== player build ===================== */
   function equippedItems(cls) {
@@ -310,16 +372,19 @@
     const ghostInv = invById(S.ghost);
     const ghost = ghostInv ? Data.ghostByHash.get(ghostInv.h) : null;
     const gp = new Set(ghost ? Content.ghostPerksFor(ghost.h, ghost.tt).map(x => x.id) : []);
+    const pb = panelBonus(job);
+    const aw = 1 + pb.awaken / 100;
     const p = {
       cls, job, items, stats, set, fx, lv, sub, element, ghost, gp,
-      maxHp: Math.round((1000 + stats.hp * 8 + lv * 30) * RARITY[job.r || 3].mult * (gp.has('hp') ? 1.08 : 1) + (fx === 'hp' ? 100 : 0)),
-      atk: Math.round((100 + lv * 6) * RARITY[job.r || 3].mult),
+      maxHp: Math.round(((1000 + stats.hp * 8 + lv * 30) * RARITY[job.r || 3].mult * (gp.has('hp') ? 1.08 : 1) + (fx === 'hp' ? 100 : 0) + pb.hp) * aw),
+      atk: Math.round(((100 + lv * 6) * RARITY[job.r || 3].mult + pb.atk) * aw),
+      elBoost: pb.el / 100,
       dr: Math.min(0.3, stats.hp / 400) + (fx === 'dr' ? 0.1 : 0),
-      crit: 0.08 + (fx === 'crit' ? 0.1 : 0) + (gp.has('crit') ? 0.05 : 0),
+      crit: 0.08 + (fx === 'crit' ? 0.1 : 0) + (gp.has('crit') ? 0.05 : 0) + pb.crit / 100,
       evade: job.mov ? 0.06 : 0,
       superRate: (1 + stats.super / 100) * (gp.has('super') ? 1.15 : 1),
       healMult: (fx === 'heal' ? 1.3 : 1) * (gp.has('heal') ? 1.25 : 1),
-      brkMult: (fx === 'brk' ? 1.25 : 1) * (gp.has('brk') ? 1.1 : 1),
+      brkMult: (fx === 'brk' ? 1.25 : 1) * (gp.has('brk') ? 1.1 : 1) * (1 + pb.brk / 100),
       orbs: [], superG: fx === 'super' ? 30 : 0, buffs: {},
       abil: {},
     };
@@ -366,13 +431,13 @@
       const e = DT_ELEMENT[ene.dt] || 'kin';
       const special = ene.am === 2;
       C.ene = { id: 'ene', name: ene.n, icon: ene.i, el: e, cost: { [e]: special ? 3 : 2 }, kind: 'atk', fire: weaponFire(ene),
-        mult: (special ? 2.8 : 1.6) * (0.6 + weaponImpact(ene) / 100) * (1 + p.stats.weapons / 150), brk: special ? 18 : 12 };
+        mult: (special ? 2.8 : 1.6) * (0.6 + weaponImpact(ene) / 100) * (1 + p.stats.weapons / 150) * itemMult(ene, p.items.ene.inv), brk: special ? 18 : 12 };
     }
     const pow = p.items.pow?.def;
     if (pow) {
       const e = DT_ELEMENT[pow.dt] || 'kin';
       C.pow = { id: 'pow', name: pow.n, icon: pow.i, el: e, cost: { any: 5 }, kind: 'atk', fire: weaponFire(pow),
-        mult: 4.2 * (0.6 + weaponImpact(pow) / 120) * (1 + p.stats.weapons / 150), brk: 30 };
+        mult: 4.2 * (0.6 + weaponImpact(pow) / 120) * (1 + p.stats.weapons / 150) * itemMult(pow, p.items.pow.inv), brk: 30 };
     }
     if (mel) {
       const e = plugElement(mel, p.element);
@@ -504,43 +569,60 @@
     });
   }
 
+  /* ===================== hub (Mobius-style screens) =====================
+   * Status bar on top, a title, the screen body, and vertical tabs on the right edge:
+   * QUEST (stages) / JOB (job cards) / EQUIP (deck) / GACHA (engrams) / ETC.
+   * Item images in the UI are the Bungie API images; battle uses pixel art. */
   let hubTab = 'story';
+  const TABS = [['story', 'QUEST', 'クエスト'], ['job', 'JOB', 'ジョブカード'], ['gear', 'EQUIP', '装備編成'], ['engram', 'GACHA', 'エングラム'], ['menu', 'ETC', 'メニュー']];
   function renderHub(tab) {
     hubTab = tab || hubTab;
     const job = activeJob();
+    const shardTotal = Object.values(S.shards || {}).reduce((a, b) => a + b, 0);
     app().innerHTML = `
-      <div class="hub-head">
-        <span class="logo">D2 MOBIUS</span>
-        <span class="grow"></span>
-        <span class="glimmer" title="グリマー">${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}" alt="">` : '◆'}<span id="glim">${S.glimmer.toLocaleString()}</span></span>
-      </div>
-      <div class="tabs">
-        ${[['story', 'ストーリー', 'auto_stories'], ['job', 'ジョブ', 'badge'], ['gear', '装備', 'shield'], ['engram', 'ガチャ', 'diamond'], ['menu', 'メニュー', 'more_horiz']]
-          .map(([k, n, ic]) => `<button data-t="${k}" class="${k === hubTab ? 'active' : ''}"><span class="ms">${ic}</span><span>${n}</span></button>`).join('')}
-      </div>
-      <div class="hub-body"></div>`;
-    $$('.tabs button').forEach(b => b.onclick = () => renderHub(b.dataset.t));
-    const body = $('.hub-body');
-    body.appendChild(jobBanner(job));
+      <div class="mh">
+        <header class="mh-status">
+          <div><b>${esc(job.name)}</b> <span class="lv">Lv.${job.lv}</span></div>
+          <div class="r"><span class="k">グリマー</span><b id="glim">${S.glimmer.toLocaleString()}</b></div>
+          <div class="xp"><span class="k g">EXP</span><span class="bar"><i style="width:${Math.min(100, (job.xp || 0) / (job.lv * 100) * 100)}%"></i></span></div>
+          <div class="r"><span class="k v">欠片</span><b>${shardTotal.toLocaleString()}</b></div>
+        </header>
+        <div class="mh-title">${TABS.find(t => t[0] === hubTab)[2]}</div>
+        <main class="mh-body"></main>
+        <nav class="mh-nav" aria-label="メインメニュー">${TABS.map(([k, en]) => `<button type="button" data-t="${k}" class="t-${k} ${k === hubTab ? 'on' : ''}">${en}</button>`).join('')}</nav>
+      </div>`;
+    $$('.mh-nav button').forEach(b => b.onclick = () => renderHub(b.dataset.t));
+    const body = $('.mh-body');
     ({ story: renderStory, job: renderJobs, gear: renderGear, engram: renderEngram, menu: renderMenu })[hubTab](body);
   }
   function updateGlimmer() { const g = $('#glim'); if (g) g.textContent = S.glimmer.toLocaleString(); }
-
-  function jobBanner(job) {
-    const sub = Data.byHash.get(job.sub);
-    const e = subElement(sub);
-    const d = el(`<div class="panel job-banner">
-      <div class="sp"></div>
-      <div class="grow">
-        <div><span class="stars r${job.r || 3}">${stars(job.r)}</span> <span style="color:var(--${e})">${esc(job.name)}</span> <span class="muted" style="font-size:12px">Lv.${job.lv}</span></div>
-        <div class="muted" style="font-size:12px">${CLASS_NAME[job.cl]} / ${esc(sub?.n || '?')} (${ELEMENT_NAME[e]})</div>
-        <div class="row" style="margin-top:4px;gap:3px">${ABIL_KINDS.map(k => { const p = Data.plugs.get(job[k.k]); return p ? `<img src="${img(p.i)}" title="${esc(k.n + ': ' + p.n)}" style="width:22px;height:22px;background:#000">` : ''; }).join('')}</div>
-      </div></div>`);
-    d.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(job.cl, e), 3));
-    return d;
+  const tierCls = (def, inv) => 'tier' + itemStars(def, inv);
+  const starText = (def, inv) => '★' + itemStars(def, inv);
+  // An item card (API image) with a rarity frame
+  function itemCard(def, inv, opts = {}) {
+    const img2 = opts.art && def.s ? def.s : def.i;
+    return `<div class="icard ${tierCls(def, inv)} ${opts.cls || ''}" ${opts.attrs || ''}>
+      <img src="${img(img2)}" alt="${esc(def.n)}" loading="lazy">
+      ${opts.label ? `<span class="tl">${esc(opts.label)}</span>` : ''}
+      <span class="st">${starText(def, inv)}${inv?.lb ? `<small>+${inv.lb}</small>` : ''}</span>
+      ${opts.badge ? `<span class="badge">${opts.badge}</span>` : ''}
+    </div>`;
   }
+  function jobCardHtml(j, extra = '') {
+    const e = subElement(Data.byHash.get(j.sub));
+    return `<div class="icard job tier${(j.r || 3)} ${extra}" data-job="${j.id}"><canvas data-cls="${j.cl}" data-el="${e}"></canvas>
+      <span class="tl">Lv.${j.lv}</span><span class="st">★${j.r || 3}</span></div>`;
+  }
+  function paintJobCanvases(root) {
+    $$('canvas[data-cls]', root).forEach(c => {
+      const s = Sprites.guardianSprite(+c.dataset.cls, c.dataset.el);
+      c.width = s.width; c.height = s.height;
+      const g = c.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(s, 0, 0);
+    });
+  }
+  function bigSprite(cls, el) { return spriteCanvas(Sprites.guardianSprite(cls, el), 4, 'mh-hero'); }
 
-  /* ----- story ----- */
+  /* ----- QUEST ----- */
   function stageUnlocked(i) {
     const st = Content.STAGES[i];
     if (st.farm) return !!S.cleared.s2;
@@ -548,28 +630,333 @@
     const prev = Content.STAGES.slice(0, i).filter(s => !s.farm).pop();
     return !!S.cleared[prev.id];
   }
+  const FACTION = { hive: ['ハイヴ', '#5dd94a'], fallen: ['フォールン', '#79bbff'], vex: ['ベックス', '#b08d57'], cabal: ['カバル', '#9a2f2f'], taken: ['テイクン', '#e8f4ff'], holo: ['シミュレーション', '#8fe8ff'] };
   function renderStory(body) {
-    body.appendChild(el(`<h2 class="sec">第1章 光の環</h2>`));
+    body.appendChild(el(`<div class="mh-chapter">第1章 光の環</div>`));
     Content.STAGES.forEach((st, i) => {
       const act = activityFor(st.act);
       const open = stageUnlocked(i);
-      const enemiesN = st.waves.flat().length;
-      const d = el(`<div class="stage ${open ? '' : 'locked'}">
-        <canvas class="thumb" width="96" height="54"></canvas>
-        <div class="grow">
-          <div class="no">${esc(st.no)} ${st.farm ? '(周回)' : ''}</div>
-          <div class="nm">${esc(st.name)}</div>
-          <div class="info">${esc(act?.dest || 'タワー演習場')} · ${st.waves.length}ウェーブ · 敵${enemiesN}体 · 推奨Lv${Math.round(st.lv * 3)}</div>
-          ${S.cleared[st.id] ? '<div class="clear">★ CLEAR</div>' : ''}
-        </div></div>`);
-      const cv = d.querySelector('canvas');
-      const g = cv.getContext('2d');
-      g.imageSmoothingEnabled = false;
-      const bgP = act ? Sprites.pixelatedBackground(img(act.img), 48, 27) : Promise.resolve(Sprites.gridBackground(48, 27));
-      bgP.then(c => g.drawImage(c, 0, 0, 96, 54)).catch(() => g.drawImage(Sprites.gridBackground(48, 27), 0, 0, 96, 54));
-      if (open) d.onclick = () => startStage(st);
+      const boss = Content.enemyDef(st.waves[st.waves.length - 1][0]);
+      const [fn, fc] = FACTION[boss.fac] || ['?', '#888'];
+      const dt = dropTable(st);
+      const d = el(`<article class="quest ${open ? '' : 'locked'}">
+        <div class="qb">${act ? `<img src="${img(act.img)}" alt="" loading="lazy">` : '<div class="grid-bg"></div>'}
+          <div class="qshade"></div>
+          <b class="qn">${esc(st.name)}</b>
+          <span class="qf"><i style="background:${fc}"></i>${fn}</span>
+          <span class="qt">${st.farm ? '周回' : st.no} ${'★'.repeat(Math.min(5, Math.ceil(st.lv)))}</span>
+        </div>
+        <div class="qi">
+          <dl><dt>推奨Lv</dt><dd>: ${Math.round(st.lv * 3)}</dd><dt>バトル回数</dt><dd>: ${st.waves.length}</dd><dt>ドロップ</dt><dd>: ${dt.label}</dd></dl>
+          ${S.cleared[st.id] ? '<span class="clear">CLEAR</span>' : ''}
+          ${open ? '<button type="button" class="go">選択する</button>' : `<span class="lockmsg">前のクエストをクリアで解放</span>`}
+        </div></article>`);
+      if (open) d.querySelector('.go').onclick = () => startStage(st);
       body.appendChild(d);
     });
+  }
+
+  /* ----- JOB CARDS ----- */
+  let viewJobId = null;
+  function renderJobs(body) {
+    const sorted = [...S.jobs].sort((a, b) => (b.r || 3) - (a.r || 3) || b.lv - a.lv);
+    const view = jobById(viewJobId) || activeJob();
+    viewJobId = view.id;
+    const grid = el(`<div class="jgrid">${sorted.map(j => jobCardHtml(j, (j.id === view.id ? 'sel ' : '') + (j.id === S.activeJob ? 'act' : ''))).join('')}
+      ${Array.from({ length: Math.max(0, 10 - sorted.length) }, () => '<div class="icard empty">?</div>').join('')}</div>`);
+    paintJobCanvases(grid);
+    $$('[data-job]', grid).forEach(c => c.onclick = () => { viewJobId = c.dataset.job; renderHub('job'); });
+    body.appendChild(grid);
+    const sub = Data.byHash.get(view.sub);
+    const e = subElement(sub);
+    body.appendChild(el(`<div class="jname"><b>${esc(view.name)}</b><span class="stars r${view.r || 3}">${'★'.repeat(view.r || 3)}</span><span class="muted">${CLASS_NAME[view.cl]} / ${esc(sub?.n || '?')}</span></div>`));
+    const btns = el(`<div class="mh-row">
+      ${view.id === S.activeJob ? '<span class="mh-chip on">使用中</span>' : '<button type="button" class="mbtn blue use">このジョブにする</button>'}
+      <button type="button" class="mbtn blue info">アビリティ詳細</button>
+      <button type="button" class="mbtn teal sp">スキルパネル</button></div>`);
+    btns.querySelector('.use')?.addEventListener('click', () => { S.activeJob = view.id; save(); renderHub('job'); });
+    btns.querySelector('.info').onclick = () => openJobDetail(view);
+    btns.querySelector('.sp').onclick = () => openSkillPanel(view);
+    body.appendChild(btns);
+    body.appendChild(el(`<div class="jabil">${['sup', 'cls', 'mel', 'gre'].map(k => { const p = Data.plugs.get(view[k]); const kind = ABIL_KINDS.find(x => x.k === k); return p ? `<span><img src="${img(p.i)}" alt="">${kind.n}<b>${esc(p.n)}</b></span>` : ''; }).join('')}</div>`));
+    const hero = el(`<div class="mh-stage"></div>`);
+    hero.appendChild(bigSprite(view.cl, e));
+    body.appendChild(hero);
+  }
+  function abilityRow(job, k) {
+    const p = Data.plugs.get(job[k]);
+    const kind = ABIL_KINDS.find(x => x.k === k);
+    return p ? `<div class="opt"><img src="${img(p.i)}"><div><div>${kind.n}: ${esc(p.n)}</div><div class="d">${esc(p.d || '')}</div></div></div>` : '';
+  }
+  function openJobDetail(job) {
+    const m = el(`<div class="modal mob-modal"><div class="panel">
+      <div class="row"><b>${esc(job.name)}</b><span class="grow"></span><button type="button" class="mbtn x">閉じる</button></div>
+      <div class="muted" style="font-size:12px;margin:6px 0">${CLASS_NAME[job.cl]} · ★${job.r || 3} · Lv.${job.lv}/${jobMaxLv(job)} · EXP ${job.xp || 0}/${job.lv * 100}</div>
+      ${['sup', 'cls', 'mel', 'gre', 'mov'].map(k => abilityRow(job, k)).join('')}
+      ${S.jobs.length > 1 && job.id !== S.activeJob ? `<button type="button" class="mbtn red del" style="margin-top:10px">ジョブを解放(+${RARITY[job.r || 3].refund} グリマー)</button>` : ''}
+    </div></div>`);
+    m.querySelector('.x').onclick = () => m.remove();
+    m.querySelector('.del')?.addEventListener('click', () => {
+      if (!confirm(`ジョブ「${job.name}」を解放しますか?`)) return;
+      S.jobs = S.jobs.filter(x => x !== job);
+      S.glimmer += RARITY[job.r || 3].refund;
+      viewJobId = null;
+      save(); m.remove(); renderHub('job');
+    });
+    document.body.appendChild(m);
+  }
+
+  /* ----- SKILL PANEL (per job; unlocked with element shards from battles) ----- */
+  const SHARD_NAME = { arc: 'アーク', solar: 'ソーラー', void: 'ボイド', stasis: 'ステイシス', strand: 'ストランド', light: '光' };
+  function panelsFor(job) {
+    const el0 = subElement(Data.byHash.get(job.sub));
+    const sh = el0 === 'prism' || el0 === 'kin' ? 'light' : el0;
+    const P = (type, v, cost, shard = sh) => ({ type, v, cost, shard });
+    return [
+      P('trait', 0, 0), P('atk', 5, 3), P('hp', 50, 3), P('brk', 3, 4, 'light'),
+      P('brk', 5, 6), P('el', 5, 6), P('atk', 5, 6), P('crit', 3, 6, 'light'),
+      P('hp', 100, 10), P('atk', 10, 10), P('el', 10, 12), P('crit', 5, 10, 'light'),
+      P('hp', 150, 16), P('brk', 10, 16), P('el', 15, 20), P('awaken', 10, 30, 'light'),
+    ];
+  }
+  const PANEL_LABEL = { trait: 'ジョブ特性', atk: '攻撃力', hp: 'HP', brk: 'ブレイク力', el: '属性強化', crit: 'クリティカル', awaken: '覚醒' };
+  const panelValue = p => p.type === 'hp' || p.type === 'atk' ? `+${p.v}` : p.type === 'trait' ? '' : `+${p.v}%`;
+  function panelBonus(job) {
+    const b = { hp: 0, atk: 0, brk: 0, el: 0, crit: 0, awaken: 0 };
+    const un = new Set(job.sp || [0]);
+    panelsFor(job).forEach((p, i) => { if (un.has(i) && b[p.type] != null) b[p.type] += p.v; });
+    return b;
+  }
+  function openSkillPanel(job) {
+    S.shards ||= {};
+    const m = el(`<div class="modal mob-modal sp-modal"><div class="panel"></div></div>`);
+    const draw = () => {
+      job.sp ||= [0];
+      const un = new Set(job.sp);
+      const P = panelsFor(job);
+      const unlockedN = un.size;
+      const canUnlock = i => !un.has(i) && (S.shards[P[i].shard] || 0) >= P[i].cost && (i !== 15 || unlockedN >= 12);
+      const b = panelBonus(job);
+      m.querySelector('.panel').innerHTML = `
+        <div class="row"><b>スキルパネル</b><span class="muted" style="font-size:12px">${esc(job.name)}</span><span class="grow"></span><button type="button" class="mbtn x">BACK</button></div>
+        <div class="shards">${Object.keys(SHARD_NAME).map(k => `<span><i style="background:${Sprites.ELEMENT_COLORS[k]}"></i>${SHARD_NAME[k]} <b>${String(S.shards[k] || 0).padStart(3, '0')}</b></span>`).join('')}</div>
+        <div class="spgrid">${P.map((p, i) => un.has(i)
+          ? `<button type="button" class="sp-cell on t-${p.type}" disabled><span>${PANEL_LABEL[p.type]}</span><b>${panelValue(p)}</b></button>`
+          : `<button type="button" class="sp-cell lock ${canUnlock(i) ? 'can' : ''}" data-i="${i}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><span>${PANEL_LABEL[p.type]}${panelValue(p)}</span><small>${SHARD_NAME[p.shard]} ×${p.cost}${i === 15 ? ' · 12枚解放後' : ''}</small></button>`).join('')}</div>
+        <div class="muted" style="font-size:12px;margin-top:10px">解放 ${unlockedN} / 16 · HP +${b.hp} / 攻撃力 +${b.atk} / ブレイク力 +${b.brk}% / 属性 +${b.el}% / クリティカル +${b.crit}%${b.awaken ? ' / 覚醒' : ''}</div>
+        <button type="button" class="mbtn teal auto" style="width:100%;margin-top:10px">おまかせ解放</button>`;
+      m.querySelector('.x').onclick = () => { m.remove(); renderHub(hubTab); };
+      $$('.sp-cell[data-i]', m).forEach(c => c.onclick = () => {
+        const i = +c.dataset.i;
+        if (!canUnlock(i)) { toast(i === 15 && unlockedN < 12 ? '先に12枚解放してください' : `${SHARD_NAME[P[i].shard]}の欠片が足りません`); return; }
+        S.shards[P[i].shard] -= P[i].cost; job.sp.push(i); save(); draw();
+      });
+      m.querySelector('.auto').onclick = () => {
+        let n = 0, again = true;
+        while (again) { again = false; for (let i = 0; i < 16; i++) if (canUnlock(i)) { S.shards[P[i].shard] -= P[i].cost; job.sp.push(i); un.add(i); n++; again = true; } }
+        save(); draw(); toast(n ? `${n} 枚のパネルを解放しました` : '解放できるパネルがありません');
+      };
+    };
+    draw();
+    document.body.appendChild(m);
+  }
+
+  /* ----- EQUIP (deck) ----- */
+  function renderGear(body) {
+    const job = activeJob();
+    const cls = job.cl;
+    const items = equippedItems(cls);
+    const stats = armorTotals(items);
+    const set = setStatus(items, cls);
+    const sub = Data.byHash.get(job.sub);
+    const e = subElement(sub);
+    const p = buildPlayer();
+    const ginv = invById(S.ghost), gdef = ginv && Data.ghostByHash.get(ginv.h);
+    const sup = Data.plugs.get(job.sup);
+    const deck = el(`<section class="deck">
+      <div class="dh"><span class="mh-chip">MAIN</span><span class="muted">${CLASS_NAME[cls]}</span><b class="dlv">Lv.${job.lv}</b></div>
+      <div class="drow">
+        <div class="dlab">ジョブ</div><div class="dlab span3">武器</div><div class="dlab">スーパー</div>
+        ${jobCardHtml(job, 'dj')}
+        ${['kin', 'ene', 'pow'].map(s => items[s] ? itemCard(items[s].def, items[s].inv, { label: SLOT_NAME[s], attrs: `data-slot="${s}"` }) : `<div class="icard empty" data-slot="${s}">+</div>`).join('')}
+        <div class="icard abil">${sup ? `<img src="${img(sup.i)}" alt="${esc(sup.n)}">` : ''}</div>
+      </div>
+      <div class="arow"><span class="dlab">防具</span>
+        ${ARMOR_SLOTS.map(s => items[s] ? itemCard(items[s].def, items[s].inv, { cls: 'sm', attrs: `data-slot="${s}"` }) : `<div class="icard sm empty" data-slot="${s}">+</div>`).join('')}
+        <span class="dlab">ゴースト</span>
+        ${gdef ? itemCard(gdef, ginv, { cls: 'sm', attrs: 'data-slot="ghost"' }) : '<div class="icard sm empty" data-slot="ghost">+</div>'}
+      </div>
+      <div class="dfoot">${set ? `シリーズ「${esc(set.name)}」${set.count}/${set.need} · ${esc(set.effect.n)} ${set.active ? '<b class="ok">発動中</b>' : '(未発動)'}` : 'シリーズ防具(レジェンダリー)をフルセットで特殊効果'}</div>
+    </section>`);
+    paintJobCanvases(deck);
+    $$('[data-slot]', deck).forEach(c => c.onclick = () => c.dataset.slot === 'ghost' ? openGhostPicker() : openPicker(cls, c.dataset.slot));
+    deck.querySelector('.dj').onclick = () => renderHub('job');
+    body.appendChild(deck);
+    const spb = el(`<div class="mh-row end"><button type="button" class="mbtn teal">スキルパネル</button></div>`);
+    spb.querySelector('button').onclick = () => openSkillPanel(job);
+    body.appendChild(spb);
+    const stage = el(`<div class="mh-stage eq">
+      <dl class="stats">
+        <dt>メインジョブ</dt><dd>${esc(job.name)}</dd>
+        <dt>エレメント</dt><dd><i class="eorb" style="background:${Sprites.ELEMENT_COLORS[e] || '#ccc'}"></i>${ELEMENT_NAME[e]}</dd>
+        <dt>HP</dt><dd class="n">${p.maxHp.toLocaleString()}</dd>
+        <dt>攻撃力</dt><dd class="n">${p.atk}</dd>
+        <dt>ブレイク力</dt><dd class="n">${Math.round(p.brkMult * 100)}%</dd>
+        <dt>クリティカル</dt><dd class="n">${Math.round(p.crit * 100)}%</dd>
+        <dt>アーマー</dt><dd class="n sm">${Object.keys(STAT).map(k => `${STAT_LABEL[k]}${stats[k]}`).join(' ')}</dd>
+      </dl></div>`);
+    stage.appendChild(bigSprite(cls, e));
+    body.appendChild(stage);
+    const imp = el(`<div class="mh-row"><button type="button" class="mbtn blue">D2 の装備を取り込む</button><a href="../" class="muted" style="font-size:12px">ARMORY でログイン →</a></div>`);
+    imp.querySelector('button').onclick = async ev => {
+      ev.target.disabled = true; ev.target.textContent = '取り込み中...';
+      try { const n = await importFromD2(); toast(`${n} 個のアイテムを取り込みました`); renderHub('gear'); }
+      catch (err) { toast('取り込み失敗: ' + err.message); ev.target.disabled = false; ev.target.textContent = 'D2 の装備を取り込む'; }
+    };
+    body.appendChild(imp);
+  }
+
+  // Item list → card picker; tapping a card opens its detail (with 装備する)
+  function openPicker(cls, slot) {
+    const list = S.inv.map(inv => ({ inv, def: Data.byHash.get(inv.h) }))
+      .filter(x => x.def && SLOT_OF_BUCKET[x.def.bk] === slot && (x.def.it === 3 || x.def.cl === cls || x.def.cl === 3))
+      .sort((a, b) => (itemStars(b.def, b.inv) - itemStars(a.def, a.inv)) || a.def.n.localeCompare(b.def.n, 'ja'));
+    const equip = x => { if (isWeaponSlot(slot)) equipWeapon(slot, x.inv.id); else S.loadout[cls][slot] = x.inv.id; save(); renderHub('gear'); };
+    const m = el(`<div class="modal mob-modal"><div class="panel">
+      <div class="row"><b>${SLOT_NAME[slot]}</b><span class="muted" style="font-size:12px">所持 ${list.length}</span><span class="grow"></span><button type="button" class="mbtn x">BACK</button></div>
+      <div class="picker2">${list.map((x, i) => itemCard(x.def, x.inv, { attrs: `data-i="${i}"`, badge: x.inv.src === 'd2' ? 'D2' : '' })).join('')}</div>
+      <div class="row" style="margin-top:10px"><button type="button" class="mbtn red un">外す</button></div></div></div>`);
+    m.querySelector('.x').onclick = () => m.remove();
+    m.querySelector('.un').onclick = () => { if (isWeaponSlot(slot)) equipWeapon(slot, null); else delete S.loadout[cls][slot]; save(); m.remove(); renderHub('gear'); };
+    $$('[data-i]', m).forEach(c => c.onclick = () => openCardDetail(list, +c.dataset.i, x => { m.remove(); equip(x); }));
+    document.body.appendChild(m);
+  }
+  function openGhostPicker() {
+    const list = S.inv.map(inv => ({ inv, def: Data.ghostByHash.get(inv.h) })).filter(x => x.def)
+      .sort((a, b) => (b.def.tt - a.def.tt) || a.def.n.localeCompare(b.def.n, 'ja'));
+    const m = el(`<div class="modal mob-modal"><div class="panel">
+      <div class="row"><b>ゴースト</b><span class="muted" style="font-size:12px">所持 ${list.length}</span><span class="grow"></span><button type="button" class="mbtn x">BACK</button></div>
+      <div class="picker2">${list.map((x, i) => itemCard(x.def, x.inv, { attrs: `data-i="${i}"` })).join('')}</div></div></div>`);
+    m.querySelector('.x').onclick = () => m.remove();
+    $$('[data-i]', m).forEach(c => c.onclick = () => openCardDetail(list, +c.dataset.i, x => { S.ghost = x.inv.id; save(); m.remove(); renderHub('gear'); }));
+    document.body.appendChild(m);
+  }
+  // Card detail: framed card with the item's API screenshot (or icon), stars, description, stats
+  function openCardDetail(list, index, onEquip) {
+    S.fav ||= {};
+    let i = index;
+    const m = el(`<div class="cdetail"></div>`);
+    const draw = () => {
+      const { def, inv } = list[i];
+      const isGhost = !def.it && Data.ghostByHash.has(def.h);
+      const el0 = DT_ELEMENT[def.dt];
+      const stars = itemStars(def, inv);
+      const fire = def.it === 3 ? weaponFire(def) : null;
+      const rows = def.it === 3
+        ? [['威力', weaponImpact(def)], ['フレーム', fire.frame?.n || '-'], ['発射数', fire.shots], ['倍率', '×' + itemMult(def, inv).toFixed(2)]]
+        : def.it === 2 ? Object.keys(STAT).map(k => [STAT_LABEL[k], inv.st?.[STAT[k]] || 0])
+        : Content.ghostPerksFor(def.h, def.tt).map(q => ['効果', q.n]);
+      const setN = def.set && Data.sets[def.set] ? `シリーズ「${Data.sets[def.set].n}」フルセット: ${Content.setEffectFor(def.set, Data.sets[def.set].n).n}` : '';
+      m.innerHTML = `
+        <div class="ccard tier${stars}">
+          <div class="ch"><img src="${img(def.i)}" alt=""><b>${esc(def.n)}</b><span class="cs">${'★'.repeat(stars)}</span></div>
+          <div class="ca"><img src="${img(def.s || def.i)}" alt="${esc(def.n)}">${stars >= 5 ? `<span class="ex">${stars === 6 ? '★6 MAX' : 'EXOTIC'}</span>` : ''}</div>
+          <div class="cb">
+            <div class="ct">${esc(def.t || (isGhost ? 'ゴーストの外殻' : ''))}${el0 ? ` · <span style="color:${Sprites.ELEMENT_COLORS[el0]}">${ELEMENT_NAME[el0]}</span>` : ''} · ${TIER[def.tt]?.n || ''}${inv?.lb ? ` · 限界突破 ${inv.lb}/${MAX_LB}` : ''}</div>
+            ${def.fx || def.d ? `<div class="cd">${esc(def.fx || def.d)}</div>` : ''}
+            ${setN ? `<div class="cd set">${esc(setN)}</div>` : ''}
+            <div class="cgrid">${rows.map(([k, v]) => `<span>${esc(k)}<b>${esc(v)}</b></span>`).join('')}</div>
+          </div>
+        </div>
+        <div class="cfoot">
+          ${onEquip ? '<button type="button" class="mbtn teal eq">装備する</button>' : ''}
+          <button type="button" class="fav ${S.fav[inv.id] ? 'on' : ''}" aria-label="お気に入り"><span></span>お気に入り</button>
+        </div>
+        <button type="button" class="side back">BACK</button>
+        <button type="button" class="side prev" ${i === 0 ? 'disabled' : ''}>Prev Card</button>
+        <button type="button" class="side next" ${i === list.length - 1 ? 'disabled' : ''}>Next Card</button>`;
+      m.querySelector('.back').onclick = () => m.remove();
+      m.querySelector('.prev').onclick = () => { if (i > 0) { i--; draw(); } };
+      m.querySelector('.next').onclick = () => { if (i < list.length - 1) { i++; draw(); } };
+      m.querySelector('.fav').onclick = () => { S.fav[inv.id] = !S.fav[inv.id]; save(); draw(); };
+      m.querySelector('.eq')?.addEventListener('click', () => { m.remove(); onEquip(list[i]); });
+    };
+    draw();
+    document.body.appendChild(m);
+  }
+
+  /* ----- GACHA (glimmer only, no real money): job / armor / weapon / ghost ----- */
+  const GACHA = {
+    job:    { n: 'ジョブ', cost: 500, col: ['#c8901e', '#ffd36a'], desc: 'サブクラス・近接・グレネード・クラススキル・スーパーの組み合わせがランダムなジョブ。クラスも混合。', rates: '★5: 10% / ★4: 30% / ★3: 60% · 10回で★4以上1つ確定' },
+    armor:  { n: '防具', cost: 300, col: ['#2f6fc0', '#7ab0f0'], desc: '全クラスの防具。レアリティが高いほどステータスが高い。同じ防具は限界突破。', rates: '★5: 3% / ★4: 17% / ★3: 35% / ★2: 45% · 10回で★3以上1つ確定' },
+    weapon: { n: '武器', cost: 300, col: ['#7a3fc8', '#b07af0'], desc: 'キネティック・エネルギー・パワー武器(全クラス共通)。同じ武器は限界突破で威力アップ。', rates: '★5: 3% / ★4: 17% / ★3: 35% / ★2: 45% · 10回で★3以上1つ確定' },
+    ghost:  { n: 'ゴースト', cost: 300, col: ['#2f9a92', '#8ae8e0'], desc: 'ゴーストの外殻。外殻ごとに固定のパッシブ効果(エキゾチックは2つ)。', rates: '★5: 15% / ★4: 85%' },
+  };
+  let gachaTab = 'job';
+  function engramSprite(dark = '#7a3fc8', light = '#b07af0') {
+    const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+    const g = c.getContext('2d');
+    const rows = ['.......KK.......', '......KPPK......', '.....KPLLPK.....', '....KPLWWLPK....', '...KPLWWWWLPK...', '..KPLLWWWWLLPK..', '.KPPLLLWWLLLPPK.', 'KPPPPLLLLLLPPPPK', '.KPPPPLLLLPPPPK.', '..KPPPPLLPPPPK..', '...KPPPPPPPPK...', '....KPPPPPPK....', '.....KPPPPK.....', '......KPPK......', '.......KK.......', '................'];
+    const pal = { K: '#1a0f2a', P: dark, L: light, W: '#f4e9ff' };
+    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (pal[ch]) { g.fillStyle = pal[ch]; g.fillRect(x, y, 1, 1); } }));
+    return c;
+  }
+  function renderEngram(body) {
+    const tabs = el(`<div class="gtabs">${Object.entries(GACHA).map(([k, v]) => `<button type="button" class="${k === gachaTab ? 'active' : ''}" data-k="${k}">${v.n}</button>`).join('')}</div>`);
+    tabs.querySelectorAll('button').forEach(b => b.onclick = () => { gachaTab = b.dataset.k; renderHub('engram'); });
+    body.appendChild(tabs);
+    const G = GACHA[gachaTab];
+    const d = el(`<div class="engram mob-panel">
+      <div class="ec"></div>
+      <div class="en">${G.n}・エングラム</div>
+      <div class="muted" style="font-size:12px;line-height:1.7">${esc(G.desc)}<br>${esc(G.rates)}<br>グリマーのみで解読(課金なし)</div>
+      <div class="mh-row" style="justify-content:center">
+        <button type="button" class="mbtn blue p1">1回 (${G.cost})</button>
+        <button type="button" class="mbtn gold p10">10回 (${G.cost * 9})</button>
+      </div></div>`);
+    d.querySelector('.ec').appendChild(spriteCanvas(engramSprite(...G.col), 6));
+    const pull = n => {
+      const cost = n === 10 ? G.cost * 9 : G.cost;
+      if (S.glimmer < cost) { toast('グリマーが足りません — クエストをクリアして集めましょう'); return; }
+      S.glimmer -= cost;
+      const results = [];
+      for (let i = 0; i < n; i++) {
+        const last = n === 10 && i === 9;
+        if (gachaTab === 'job') {
+          const r = last ? rollRarity(4) : rollRarity();
+          results.push({ job: grantJob(rollJob(rand(3), r)), r });
+          continue;
+        }
+        const it = rollGearItem(gachaTab, false, last ? 4 : 0);
+        if (it) results.push(grantItem(it, 'gacha'));
+      }
+      // 解読のおまけ: element shards
+      const bonusEl = pick(Object.keys(SHARD_NAME));
+      const bonus = n === 10 ? 10 : 1;
+      S.shards ||= {}; S.shards[bonusEl] = (S.shards[bonusEl] || 0) + bonus;
+      save(); updateGlimmer();
+      showGachaResult(results, { el: bonusEl, n: bonus });
+    };
+    d.querySelector('.p1').onclick = () => pull(1);
+    d.querySelector('.p10').onclick = () => pull(10);
+    body.appendChild(d);
+  }
+  function showGachaResult(results, bonus) {
+    const m = el(`<div class="gres">
+      <div class="ring1"></div><div class="ring2"></div>
+      <div class="gt">ENGRAM DECRYPTED</div>
+      <div class="ggrid">${results.map((r, i) => {
+        if (r.job) {
+          const j = r.job.job;
+          return `<div class="gcell" style="animation-delay:${i * 90}ms">${jobCardHtml(j)}${r.job.dup ? `<span class="gb dup">EXP+${r.job.xp}</span>` : '<span class="gb new">NEW!</span>'}</div>`;
+        }
+        return `<div class="gcell" style="animation-delay:${i * 90}ms">${itemCard(r.def, r.inv)}${r.dup ? `<span class="gb dup">限界突破${r.inv.lb}</span>` : '<span class="gb new">NEW!</span>'}</div>`;
+      }).join('')}</div>
+      <div class="gbonus"><i style="background:${Sprites.ELEMENT_COLORS[bonus.el]}"></i><b>${SHARD_NAME[bonus.el]}の欠片 ×${bonus.n}</b><span>解読のおまけが手に入りました!</span></div>
+      <button type="button" class="mbtn gold ok">OK</button></div>`);
+    paintJobCanvases(m);
+    m.querySelector('.ok').onclick = () => { m.remove(); renderHub('engram'); };
+    document.body.appendChild(m);
   }
 
   async function startStage(st) {
@@ -627,248 +1014,6 @@
     });
   }
 
-  /* ----- jobs (obtained from the job engram; not freely creatable) ----- */
-  const stars = r => '★'.repeat(r || 3);
-  // Icons of the job's combination: super / class / melee / grenade
-  function jobComboLine(j) {
-    return `<div class="abil" style="margin-top:3px">${['sup', 'cls', 'mel', 'gre'].map(k => {
-      const p = Data.plugs.get(j[k]);
-      const kind = ABIL_KINDS.find(x => x.k === k);
-      return p ? `<img src="${img(p.i)}" title="${esc(kind.n + ': ' + p.n)}">` : '';
-    }).join('')}</div>`;
-  }
-  function renderJobs(body) {
-    body.appendChild(el(`<h2 class="sec">ジョブ一覧(${S.jobs.length})</h2>`));
-    const sorted = [...S.jobs].sort((a, b) => (b.id === S.activeJob) - (a.id === S.activeJob) || (b.r || 3) - (a.r || 3) || b.lv - a.lv);
-    for (const j of sorted) {
-      const sub = Data.byHash.get(j.sub);
-      const e = subElement(sub);
-      const d = el(`<div class="job-card ${j.id === S.activeJob ? 'active' : ''}">
-        <div class="sp"></div>
-        <div class="grow">
-          <div><span class="stars r${j.r || 3}">${stars(j.r)}</span> <span style="color:var(--${e})">${esc(j.name)}</span> <span class="muted" style="font-size:11px">Lv.${j.lv}/${jobMaxLv(j)}</span></div>
-          <div class="muted" style="font-size:11px">${CLASS_NAME[j.cl]} / ${esc(sub?.n || '?')}</div>
-          ${jobComboLine(j)}
-        </div>
-        <div class="row" style="flex-direction:column;gap:4px">
-          ${j.id === S.activeJob ? '<span class="muted" style="font-size:11px">使用中</span>' : '<button class="pbtn small use">使用</button>'}
-          <button class="pbtn small info">詳細</button>
-        </div></div>`);
-      d.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(j.cl, e), 2));
-      d.querySelector('.use')?.addEventListener('click', () => { S.activeJob = j.id; save(); renderHub('job'); });
-      d.querySelector('.info').onclick = () => openJobDetail(j);
-      body.appendChild(d);
-    }
-    const nb = el(`<button class="pbtn primary" style="width:100%;margin-top:6px">◆ エングラムでジョブを召喚</button>`);
-    nb.onclick = () => renderHub('engram');
-    body.appendChild(nb);
-    body.appendChild(el(`<p class="muted" style="font-size:11px;line-height:1.6">ジョブはグリマーを使った「ジョブ・エングラム」で手に入ります。ジョブ = サブクラス・近接・グレネード・クラススキル・スーパーのランダムな組み合わせ(名前は組み合わせごとに固定)。★が高いほど基礎能力とレベル上限が上がり、同じジョブが出たら経験値に変換されます。</p>`));
-  }
-
-  function abilityRow(job, k) {
-    const p = Data.plugs.get(job[k]);
-    const kind = ABIL_KINDS.find(x => x.k === k);
-    return p ? `<div class="opt" style="cursor:default;margin-bottom:4px"><img src="${img(p.i)}"><div><div>${kind.n}: ${esc(p.n)}</div><div class="d" style="-webkit-line-clamp:4">${esc(p.d || '')}</div></div></div>` : '';
-  }
-  function openJobDetail(job) {
-    const sub = Data.byHash.get(job.sub);
-    const e = subElement(sub);
-    const m = el(`<div class="modal"><div class="panel">
-      <div class="row"><b style="color:var(--accent)">${esc(job.name)}</b><span class="grow"></span><button class="pbtn small x">✕</button></div>
-      <div class="row" style="margin:8px 0"><div class="sp"></div><div class="grow">
-        <div><span class="stars r${job.r || 3}">${stars(job.r)}</span> Lv.${job.lv}/${jobMaxLv(job)} <span class="muted" style="font-size:11px">EXP ${job.xp || 0}/${job.lv * 100}</span></div>
-        <div class="muted" style="font-size:12px">${CLASS_NAME[job.cl]} / ${esc(sub?.n || '?')}(${ELEMENT_NAME[e]})· 能力倍率 ×${RARITY[job.r || 3].mult}</div>
-      </div></div>
-      <h2 class="sec">ジョブ構成</h2>
-      ${['sup', 'cls', 'mel', 'gre'].map(k => abilityRow(job, k)).join('')}
-      <h2 class="sec">サブクラス標準</h2>
-      ${abilityRow(job, 'mov')}
-      ${S.jobs.length > 1 ? `<div class="row" style="margin-top:10px"><span class="grow"></span><button class="pbtn small del" style="border-color:var(--bad)">ジョブを解放(+${RARITY[job.r || 3].refund} グリマー)</button></div>` : ''}
-    </div></div>`);
-    m.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(job.cl, e), 3));
-    m.querySelector('.x').onclick = () => m.remove();
-    m.querySelector('.del')?.addEventListener('click', () => {
-      if (!confirm(`ジョブ「${job.name}」を解放しますか?`)) return;
-      S.jobs = S.jobs.filter(x => x !== job);
-      if (S.activeJob === job.id) S.activeJob = S.jobs[0].id;
-      S.glimmer += RARITY[job.r || 3].refund;
-      save(); m.remove(); renderHub('job');
-    });
-    document.body.appendChild(m);
-  }
-
-  /* ----- gear ----- */
-  function renderGear(body) {
-    const job = activeJob();
-    const cls = job.cl;
-    const items = equippedItems(cls);
-    const stats = armorTotals(items);
-    const set = setStatus(items, cls);
-    body.appendChild(el(`<h2 class="sec">${CLASS_NAME[cls]} の装備</h2>`));
-    const grid = el(`<div class="slots"></div>`);
-    const ginv = invById(S.ghost), gdef = ginv && Data.ghostByHash.get(ginv.h);
-    const gd = el(`<div class="slot">
-      ${gdef ? `<img src="${img(gdef.i)}">` : '<div style="width:44px;height:44px;border:2px dashed var(--line)"></div>'}
-      <div class="grow"><div class="lbl">ゴースト · 全クラス共通</div>
-      <div class="nm t${gdef?.tt || 0}">${gdef ? esc(gdef.n) : '(なし)'}</div>
-      ${gdef ? `<div class="lbl">${Content.ghostPerksFor(gdef.h, gdef.tt).map(x => esc(x.n)).join(' / ')}</div>` : ''}</div></div>`);
-    gd.onclick = () => openGhostPicker();
-    grid.appendChild(gd);
-    for (const slot of SLOT_ORDER) {
-      const x = items[slot];
-      const d = el(`<div class="slot">
-        ${x ? `<img src="${img(x.def.i)}">` : '<div style="width:44px;height:44px;border:2px dashed var(--line)"></div>'}
-        <div class="grow"><div class="lbl">${SLOT_NAME[slot]}${slot === 'kin' ? ' · 通常攻撃' : slot === 'ene' || slot === 'pow' ? ' · エレメント消費' : ''}</div>
-        <div class="nm t${x?.def.tt || 0}">${x ? esc(x.def.n) : '(なし)'}</div>
-        ${x ? `<div class="lbl">${esc(x.def.t || '')}${x.def.dt && x.def.it === 3 ? ' · ' + ELEMENT_NAME[DT_ELEMENT[x.def.dt]] : ''}${x.def.set && Data.sets[x.def.set] ? ' · ' + esc(Data.sets[x.def.set].n) : ''}${x.inv.src === 'd2' ? ' · D2' : ''}</div>` : ''}
-        </div></div>`);
-      d.onclick = () => openPicker(cls, slot);
-      grid.appendChild(d);
-    }
-    body.appendChild(grid);
-    body.appendChild(el(`<h2 class="sec">アーマーステータス</h2>`));
-    body.appendChild(el(`<div class="panel statline">${Object.keys(STAT).map(k => `<div>${STAT_LABEL[k]} <span class="v">${stats[k]}</span></div>`).join('')}</div>`));
-    body.appendChild(el(`<div class="setfx ${set?.active ? 'on' : ''}">${set
-      ? `シリーズ「${esc(set.name)}」 ${set.count}/${set.need} ― フルセット効果: ${esc(set.effect.n)} ${set.active ? '(発動中)' : '(未発動)'}`
-      : 'シリーズ防具をフルセットで装備すると特殊効果が発動します'}</div>`));
-    body.appendChild(el(`<h2 class="sec">Destiny 2 から取り込み</h2>`));
-    const imp = el(`<div class="panel"><div class="muted" style="font-size:12px;line-height:1.6;margin-bottom:6px">ARMORY でログイン済みなら、所持している武器・防具(ステータス込み)と、各キャラの現在の装備をそのまま取り込めます。</div><button class="pbtn">D2 の装備を取り込む</button> <a href="../" class="muted" style="font-size:12px">ARMORY でログイン →</a></div>`);
-    imp.querySelector('button').onclick = async ev => {
-      ev.target.disabled = true; ev.target.textContent = '取り込み中...';
-      try { const n = await importFromD2(); toast(`${n} 個のアイテムを取り込みました`); renderHub('gear'); }
-      catch (e) { toast('取り込み失敗: ' + e.message); ev.target.disabled = false; ev.target.textContent = 'D2 の装備を取り込む'; }
-    };
-    body.appendChild(imp);
-  }
-
-  function openPicker(cls, slot) {
-    const list = S.inv.map(inv => ({ inv, def: Data.byHash.get(inv.h) }))
-      .filter(x => x.def && SLOT_OF_BUCKET[x.def.bk] === slot && (x.def.it === 3 || x.def.cl === cls || x.def.cl === 3))
-      .sort((a, b) => (b.def.tt - a.def.tt) || a.def.n.localeCompare(b.def.n, 'ja'));
-    const m = el(`<div class="modal"><div class="panel">
-      <div class="row"><b style="color:var(--accent)">${SLOT_NAME[slot]} を選択</b><span class="grow"></span><button class="pbtn small x">✕</button></div>
-      <div class="muted" style="font-size:11px;margin:4px 0 8px">所持 ${list.length} 個 · エングラムやステージドロップ、D2取り込みで増えます</div>
-      <div class="picker"></div><div class="detail" style="margin-top:8px;font-size:12px"></div>
-      <div class="row" style="margin-top:8px"><button class="pbtn small unequip">外す</button></div>
-    </div></div>`);
-    const pk = m.querySelector('.picker');
-    const detail = m.querySelector('.detail');
-    for (const x of list) {
-      const d = el(`<div class="it t${x.def.tt}" title="${esc(x.def.n)}"><img src="${img(x.def.i)}" loading="lazy">${x.inv.src === 'd2' ? '<span class="src">D2</span>' : ''}</div>`);
-      d.onmouseenter = () => {
-        const st = x.def.it === 2 ? Object.keys(STAT).map(k => `${STAT_LABEL[k]} ${x.inv.st?.[STAT[k]] || 0}`).join(' / ') : `威力 ${weaponImpact(x.def)}`;
-        const setN = x.def.set && Data.sets[x.def.set] ? ` · シリーズ: ${Data.sets[x.def.set].n}（${Content.setEffectFor(x.def.set, Data.sets[x.def.set].n).n}）` : '';
-        detail.innerHTML = `<b class="t${x.def.tt}">${esc(x.def.n)}</b> <span class="muted">${esc(x.def.t || '')}</span><br>${esc(st)}${esc(setN)}`;
-      };
-      d.onclick = () => { if (isWeaponSlot(slot)) equipWeapon(slot, x.inv.id); else S.loadout[cls][slot] = x.inv.id; save(); m.remove(); renderHub('gear'); };
-      pk.appendChild(d);
-    }
-    m.querySelector('.x').onclick = () => m.remove();
-    m.querySelector('.unequip').onclick = () => { if (isWeaponSlot(slot)) equipWeapon(slot, null); else delete S.loadout[cls][slot]; save(); m.remove(); renderHub('gear'); };
-    document.body.appendChild(m);
-  }
-
-  function openGhostPicker() {
-    const list = S.inv.map(inv => ({ inv, def: Data.ghostByHash.get(inv.h) })).filter(x => x.def)
-      .sort((a, b) => (b.def.tt - a.def.tt) || a.def.n.localeCompare(b.def.n, 'ja'));
-    const m = el(`<div class="modal"><div class="panel">
-      <div class="row"><b style="color:var(--accent)">ゴーストを選択</b><span class="grow"></span><button class="pbtn small x">✕</button></div>
-      <div class="muted" style="font-size:11px;margin:4px 0 8px">所持 ${list.length} 個 · ゴーストガチャで増えます</div>
-      <div class="picker"></div><div class="detail" style="margin-top:8px;font-size:12px"></div></div></div>`);
-    const pk = m.querySelector('.picker'), detail = m.querySelector('.detail');
-    for (const x of list) {
-      const d = el(`<div class="it t${x.def.tt}" title="${esc(x.def.n)}"><img src="${img(x.def.i)}" loading="lazy"></div>`);
-      d.onmouseenter = () => { detail.innerHTML = `<b class="t${x.def.tt}">${esc(x.def.n)}</b><br>${Content.ghostPerksFor(x.def.h, x.def.tt).map(q => esc(q.n)).join(' / ')}`; };
-      d.onclick = () => { S.ghost = x.inv.id; save(); m.remove(); renderHub('gear'); };
-      pk.appendChild(d);
-    }
-    m.querySelector('.x').onclick = () => m.remove();
-    document.body.appendChild(m);
-  }
-
-  /* ----- gacha (glimmer only, no real money): job / armor / weapon / ghost ----- */
-  const GACHA = {
-    job:    { n: 'ジョブ', cost: 500, col: ['#c8901e', '#ffd36a'], desc: 'サブクラス・近接・グレネード・クラススキル・スーパーの組み合わせがランダムなジョブ。クラスも混合。', rates: '★5: 10% / ★4: 30% / ★3: 60% · 10回で★4以上1つ確定' },
-    armor:  { n: '防具', cost: 300, col: ['#2f6fc0', '#7ab0f0'], desc: '全クラスの防具(シリーズ防具を含む)。ステータスはランダム。', rates: 'エキゾチック 6% · 10回目はエキゾチック率UP' },
-    weapon: { n: '武器', cost: 300, col: ['#7a3fc8', '#b07af0'], desc: 'キネティック・エネルギー・パワー武器。武器は全クラス共通。', rates: 'エキゾチック 6% · 10回目はエキゾチック率UP' },
-    ghost:  { n: 'ゴースト', cost: 300, col: ['#2f9a92', '#8ae8e0'], desc: 'ゴーストの外殻。外殻ごとに固定のパッシブ効果(エキゾチックは2つ)。', rates: 'エキゾチック 15%' },
-  };
-  let gachaTab = 'job';
-  function rollGearItem(kind, forceExotic) {
-    if (kind === 'ghost') {
-      const ex = forceExotic || Math.random() < 0.15;
-      const pool = Data.ghosts.filter(gh => gh.tt === (ex ? 6 : 5));
-      return pick(pool.length ? pool : Data.ghosts);
-    }
-    const exotic = forceExotic || Math.random() < 0.06;
-    const slot = pick(kind === 'weapon' ? ['kin', 'ene', 'pow'] : ARMOR_SLOTS);
-    let pool = (Data.pool[slot] || []).filter(it => it.tt === (exotic ? 6 : 5));
-    if (!pool.length) pool = Data.pool[slot] || [];
-    return pick(pool);
-  }
-  function engramSprite(dark = '#7a3fc8', light = '#b07af0') {
-    const c = document.createElement('canvas'); c.width = 16; c.height = 16;
-    const g = c.getContext('2d');
-    const rows = ['.......KK.......', '......KPPK......', '.....KPLLPK.....', '....KPLWWLPK....', '...KPLWWWWLPK...', '..KPLLWWWWLLPK..', '.KPPLLLWWLLLPPK.', 'KPPPPLLLLLLPPPPK', '.KPPPPLLLLPPPPK.', '..KPPPPLLPPPPK..', '...KPPPPPPPPK...', '....KPPPPPPK....', '.....KPPPPK.....', '......KPPK......', '.......KK.......', '................'];
-    const pal = { K: '#1a0f2a', P: dark, L: light, W: '#f4e9ff' };
-    rows.forEach((r, y) => [...r].forEach((ch, x) => { if (pal[ch]) { g.fillStyle = pal[ch]; g.fillRect(x, y, 1, 1); } }));
-    return c;
-  }
-  function jobResultCard(g, r, i) {
-    const j = g.job;
-    const sub = Data.byHash.get(j.sub);
-    const e = subElement(sub);
-    const row = el(`<div class="job-card" style="animation:pop 300ms ease-out both;animation-delay:${i * 80}ms">
-      <div class="sp"></div><div class="grow">
-        <div><span class="stars r${r}">${'★'.repeat(r)}</span> <span style="color:var(--${e})">${esc(j.name)}</span> ${g.dup ? `<span class="muted" style="font-size:11px">重複 → EXP+${g.xp}</span>` : '<span style="color:var(--good);font-size:11px">NEW</span>'}</div>
-        <div class="muted" style="font-size:11px">${CLASS_NAME[j.cl]} / ${esc(sub?.n || '?')}</div>
-        ${jobComboLine(j)}
-      </div></div>`);
-    row.querySelector('.sp').appendChild(spriteCanvas(Sprites.guardianSprite(j.cl, e), 1));
-    return row;
-  }
-  function renderEngram(body) {
-    const tabs = el(`<div class="gtabs">${Object.entries(GACHA).map(([k, v]) => `<button class="${k === gachaTab ? 'active' : ''}" data-k="${k}">${v.n}</button>`).join('')}</div>`);
-    tabs.querySelectorAll('button').forEach(b => b.onclick = () => { gachaTab = b.dataset.k; renderHub('engram'); });
-    body.appendChild(tabs);
-    const G = GACHA[gachaTab];
-    const d = el(`<div class="panel engram">
-      <div class="ec"></div>
-      <div style="margin:6px 0">${G.n}・エングラム</div>
-      <div class="muted" style="font-size:12px;line-height:1.6">${esc(G.desc)}<br>${esc(G.rates)}<br>グリマーのみで解読(課金なし)</div>
-      <div class="row" style="justify-content:center;margin-top:10px">
-        <button class="pbtn p1">1回 (${G.cost})</button>
-        <button class="pbtn primary p10">10回 (${G.cost * 9})</button>
-      </div>
-      <div class="res" style="margin-top:10px"></div></div>`);
-    d.querySelector('.ec').appendChild(spriteCanvas(engramSprite(...G.col), 6));
-    const pull = n => {
-      const cost = n === 10 ? G.cost * 9 : G.cost;
-      if (S.glimmer < cost) { toast('グリマーが足りません — ステージをクリアして集めましょう'); return; }
-      S.glimmer -= cost;
-      const res = d.querySelector('.res');
-      res.innerHTML = '';
-      res.className = gachaTab === 'job' ? 'res' : 'res pull-res';
-      for (let i = 0; i < n; i++) {
-        const last = n === 10 && i === 9;
-        if (gachaTab === 'job') {
-          const r = last ? rollRarity(4) : rollRarity();
-          res.appendChild(jobResultCard(grantJob(rollJob(rand(3), r)), r, i));
-          continue;
-        }
-        const it = rollGearItem(gachaTab, last && Math.random() < 0.3);
-        if (!it) continue;
-        addItem(it, 'gacha');
-        const sub = gachaTab === 'ghost' ? Content.ghostPerksFor(it.h, it.tt).map(q => q.n).join(' / ') : (it.t || '');
-        res.appendChild(el(`<div class="it t${it.tt}" style="animation-delay:${i * 80}ms" title="${esc(it.n + ' — ' + sub)}"><img src="${img(it.i)}"><div class="n">${esc(it.n)}</div></div>`));
-      }
-      save(); updateGlimmer();
-    };
-    d.querySelector('.p1').onclick = () => pull(1);
-    d.querySelector('.p10').onclick = () => pull(10);
-    body.appendChild(d);
-  }
-
   /* ----- menu ----- */
   function renderMenu(body) {
     body.appendChild(el(`<h2 class="sec">メニュー</h2>`));
@@ -894,7 +1039,8 @@
         ${r.win ? `
           <div class="glimmer" style="justify-content:center">${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}">` : ''}+${r.glimmer.toLocaleString()} ${first ? '(初回ボーナス込み)' : ''}</div>
           <div class="muted" style="font-size:12px;margin-top:4px">ジョブ経験値 +${r.xp}${r.levelUp ? ` · <span style="color:var(--good)">LEVEL UP! Lv.${r.lv}</span>` : ''}</div>
-          ${r.drops.length ? `<div style="margin-top:8px">ドロップ</div><div class="drops">${r.drops.map(d => `<img class="t${d.tt}" src="${img(d.i)}" title="${esc(d.n)}">`).join('')}</div><div style="font-size:12px">${r.drops.map(d => esc(d.n)).join(' / ')}</div>` : ''}`
+          <div class="shards" style="justify-content:center;margin-top:8px">${Object.entries(r.shards || {}).map(([k, n]) => `<span><i style="background:${Sprites.ELEMENT_COLORS[k]}"></i>${SHARD_NAME[k]} +${n}</span>`).join('')}</div>
+          ${r.drops.length ? `<div style="margin-top:8px">ドロップ</div><div class="drops2">${r.drops.map(d => itemCard(d.def, d.inv, { badge: d.dup ? '限界突破' : 'NEW!' })).join('')}</div><div style="font-size:12px">${r.drops.map(d => esc(d.def.n)).join(' / ')}</div>` : ''}`
           : '<div class="muted">光が尽きた……装備やジョブを見直して再挑戦しよう。</div>'}
         <button class="pbtn primary" style="margin-top:14px;width:100%">OK</button></div></div>`);
       m.querySelector('button').onclick = () => { m.remove(); resolve(); };
@@ -1085,6 +1231,7 @@
       if (weak) d *= 1.5;
       if (e.broken > 0) d *= 2;
       if (p.fx === 'atk') d *= 1.1;
+      if (elem === p.element || (p.element === 'prism' && elem !== 'kin')) d *= 1 + (p.elBoost || 0); // skill panel 属性強化
       if (opts.ability && p.fx === 'ability') d *= 1.2;
       d = Math.round(d);
       e.hp = Math.max(0, e.hp - d);
@@ -1105,7 +1252,7 @@
           log(`${e.n} をブレイク! 3ターンの間ダメージ2倍`);
         }
       }
-      if (e.hp <= 0) { e.dieT = 1; burst(e.x, b.cy, '#ffffff', 18, 3.5); }
+      if (e.hp <= 0) { e.dieT = 1; burst(e.x, b.cy, '#ffffff', 18, 3.5); (B.kills ||= []).push(e); }
       return d;
     }
     function holdWeapon(k) { B.held = k; B.heldT = 1400; }
@@ -1142,7 +1289,7 @@
     async function normalAttack() {
       const kin = p.items.kin?.def;
       const special = kin?.am === 2;
-      const base = p.atk * (0.6 + weaponImpact(kin) / 100) * (special ? 1.6 : 1) * (1 + p.stats.weapons / 150) * (p.buffs.gunslinger ? 1.8 : 1);
+      const base = p.atk * (0.6 + weaponImpact(kin) / 100) * (special ? 1.6 : 1) * (1 + p.stats.weapons / 150) * (p.buffs.gunslinger ? 1.8 : 1) * itemMult(kin, p.items.kin?.inv);
       p.buffs.gunslinger = 0;
       await fireWeapon(C.kin, base, 6);
       const n = (special ? 1 : 2) + (p.fx === 'orb' ? 1 : 0);
@@ -1318,12 +1465,17 @@
       const levelUp = gainJobXp(job, xp);
       const drops = [];
       if (st.drop && (Math.random() < st.drop.chance || (st.drop.first && first))) {
-        const kind = st.drop.pool === 'exotic' ? (Math.random() < 0.5 ? 'weapon' : 'armor') : st.drop.pool;
-        const it = rollGearItem(kind, st.drop.pool === 'exotic');
-        if (it) { addItem(it, 'drop'); drops.push(it); }
+        const it = rollDropItem(st);
+        if (it) drops.push(grantItem(it, 'drop'));
       }
+      // Element shards (skill panel currency): each defeated enemy drops its weakness element
+      S.shards ||= {};
+      const shards = {};
+      for (const e of B.kills || []) { const k = e.weak === 'kin' ? 'light' : e.weak; shards[k] = (shards[k] || 0) + (e.boss ? 3 : 1); }
+      shards.light = (shards.light || 0) + st.waves.length;
+      for (const k in shards) S.shards[k] = (S.shards[k] || 0) + shards[k];
       save();
-      resolveBattle({ win: true, glimmer, xp, levelUp, lv: job.lv, drops });
+      resolveBattle({ win: true, glimmer, xp, levelUp, lv: job.lv, drops, shards });
     }
 
     // ---- HUD (Mobius-style) ----
