@@ -1194,7 +1194,7 @@
    * Top: elements (sorted). Tap screen/enemy = normal attack (kinetic).
    * Left: kinetic / energy / heavy weapons. Right: melee / grenade / class ability.
    * Bottom: HP bar, Super gauge (tap when full), guard ring (long press = spend elements for a defensive buff). */
-  const BW = 180, BH = 320, BRS = 3;
+  const BW = 480, BH = 270, BRS = 3;   // landscape 16:9 battlefield (rendered at 3x)
   const ORB_ORDER = ['arc', 'solar', 'void', 'stasis', 'strand', 'light'];
 
   function costPips(cost) {
@@ -1238,39 +1238,57 @@
       fx: [], shake: 0, banner: null, log: [], hurtT: 0, flash: 0,
       pAtkT: 0, pHitT: 0, pDash: 0, pDodge: 0, held: 'kin', heldT: 0, superFx: null, ringHold: 0,
     };
+    const bossKey = st.waves[st.waves.length - 1][0];
+    const bossDef = Content.enemyDef(bossKey);
+    const [facN, facC] = FACTION[bossDef.fac] || ['?', '#888'];
+    const weakSet = [...new Set(st.waves.flat().map(k => Content.enemyDef(k).weak))];
+    const iconSvg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round">${d}</svg>`;
+    const ICON = {
+      tri: '<path d="M12 3l9 16H3z"/><path d="M12 10v4"/>', skull: '<path d="M5 11a7 7 0 0 1 14 0v3l-2 2v3H7v-3l-2-2z"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>',
+      target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>', flag: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
+    };
+    const drive = ORB_ORDER.map(e => `<button type="button" class="L-gem" data-e="${e}" aria-label="${ELEMENT_NAME[e]}で防御" style="--c:${Sprites.ELEMENT_COLORS[e]}"><i></i><b>0</b></button>`).join('');
     app().innerHTML = `
-      <div class="bt mob">
+      <div class="bt land">
         <canvas id="bc" width="${BW * BRS}" height="${BH * BRS}"></canvas>
-        <div class="m-top">
-          <div class="m-score"><span class="lbl">SCORE</span><b class="score">0</b><span class="lbl">BATTLE</span><b class="wv">1/${st.waves.length}</b></div>
-          <div class="m-scoreadd"></div>
-          <button type="button" class="m-help">HELP</button>
-        </div>
-        <div class="m-orbs"></div>
-        <div class="m-target"><div class="m-tbar"><div class="m-dots"></div><div class="m-brk"><i></i></div></div><b class="m-cnt">-</b></div>
-        <div class="m-tinfo"></div>
-        <div class="bt-side bt-left"></div>
-        <div class="bt-side bt-right"></div>
+        <section class="L-mission">
+          <div class="L-mh"><span class="L-crest">${iconSvg(ICON.flag)}</span><div><b>QUEST · ${esc(st.farm ? '周回' : st.no)}</b><em>${esc(st.name)}</em><small>${esc(facN)}を撃破せよ</small></div></div>
+          <div class="L-mods">
+            ${st.waves.some(w => w.some(k => Content.BOSSES[k])) ? `<span>${iconSvg(ICON.skull)}ボス</span>` : ''}
+            <span style="color:${facC}">${iconSvg(ICON.target)}${esc(facN)}</span>
+            ${weakSet.map(w => `<span style="color:${Sprites.ELEMENT_COLORS[w]}">${iconSvg(ICON.tri)}${ELEMENT_NAME[w]}弱点</span>`).join('')}
+            <span>BATTLE <b class="wv">1/${st.waves.length}</b></span>
+          </div>
+        </section>
+        <div class="m-orbs" aria-label="エレメント"></div>
+        <section class="L-boss">
+          <div class="L-bh"><span class="L-crest">${iconSvg(ICON.skull)}</span><b class="L-bname">-</b><span class="L-cnt" title="行動まで"><i class="m-dots"></i><b class="m-cnt">-</b></span></div>
+          <div class="L-brow"><span>HP</span><div class="L-bar hp"><i class="L-bhp"></i></div><em class="L-bhpv"></em></div>
+          <div class="L-brow"><span>BREAK</span><div class="L-bar brk m-brk"><i></i></div><em class="L-bbrk"></em></div>
+          <div class="L-bchips m-tinfo"></div>
+        </section>
+        <div class="L-tools"><span class="L-score">SCORE <b class="score">0</b><em class="m-scoreadd"></em></span>
+          <button type="button" class="m-tv">TARGET</button><button type="button" class="m-auto">AUTO</button><button type="button" class="m-help">HELP</button></div>
         <div class="bt-log"></div>
-        <div class="m-shade"></div>
         <div class="m-banner"><span></span></div>
-        <div class="m-buffs"></div>
-        <div class="m-hp">
-          <div class="m-hprow"><span class="m-hpl">HP</span><span class="m-hpv"></span></div>
-          <div class="m-hpbar"><i></i></div>
-          <div class="m-sprow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg><div class="m-spbar"><i></i></div></div>
-        </div>
-        <button type="button" class="m-super sp" aria-label="スーパー"><span>SUPER</span></button>
-        <div class="m-btns"><button type="button" class="m-tv">TARGET<br>VIEW</button><button type="button" class="m-auto">FULL<br>AUTO</button></div>
-        <div class="ring"><canvas width="192" height="192"></canvas><span>GUARD</span></div>
+        <section class="L-guard">
+          <div class="L-gh"><span class="L-crest">${iconSvg(ICON.flag)}</span><b>GUARDIAN · ${esc(CLASS_NAME[p.cls])}</b><em>${esc(p.job.name)}</em><span class="m-buffs"></span></div>
+          <div class="L-grow"><span>HP</span><div class="L-bar php"><i class="m-hpbar-i"></i></div><em class="m-hpv"></em></div>
+          <div class="L-grow"><span>SHIELD</span><div class="L-bar shd"><i class="L-shd"></i></div><em class="L-shdv"></em></div>
+          <div class="L-wpns bt-left"></div>
+          <button type="button" class="m-super sp" aria-label="スーパー"><span class="L-spic">${p.abil.sup ? `<img src="${img(p.abil.sup.i)}" alt="">` : ''}</span><small>SUPER</small></button>
+        </section>
+        <section class="L-drive"><div class="L-dt">ELEMENT DRIVE</div><div class="L-gems">${drive}</div><div class="L-dh">タップで消費して防御</div></section>
+        <section class="L-cards bt-right"></section>
+        <div class="L-rotate">横向きにするとプレイしやすくなります</div>
       </div>`;
     const canvas = $('#bc');
     const g = canvas.getContext('2d');
     g.imageSmoothingEnabled = false;
 
     // ---- assets: background (API PGCR, pixelated), guardian colored by equipped armor icons, ghost by shell ----
-    try { B.bg = act ? await Sprites.pixelatedBackground(img(act.img), 90, 160) : Sprites.gridBackground(90, 160); }
-    catch { B.bg = Sprites.gridBackground(90, 160); }
+    try { B.bg = act ? await Sprites.pixelatedBackground(img(act.img), 320, 180) : Sprites.gridBackground(320, 180); }
+    catch { B.bg = Sprites.gridBackground(320, 180); }
     const vis = p.element === 'prism' ? 'prism' : p.element;
     // armor look per slot from the equipped armor's API icons (head / arms / chest / legs / class item)
     try { B.slotPal = p.oi ? await Sprites.guardianSlotPal(p.cls, outfitUrls(p.oi)) : {}; }
@@ -1310,7 +1328,7 @@
 
     // ---- geometry ----
     // Player on the lower left facing right, enemies on the right (Mobius-style diagonal)
-    const PX = 50, PY = 268, PSC = 1.75; // player feet + sprite scale (64px art)
+    const PX = 118, PY = 180, PSC = 1.4; // player feet + sprite scale (64px art) — left of the landscape field
     const pBox = () => {
       const s = B.guardian.sprite;
       const w = s.width * PSC, h = s.height * PSC;
@@ -1366,13 +1384,13 @@
     function layoutEnemies() {
       const n = B.enemies.length;
       const boss = B.enemies.findIndex(e => e.boss);
-      const slots = n === 1 ? [[116, 162]] : n === 2 ? [[98, 146], [142, 176]] : [[92, 134], [146, 150], [114, 182]];
+      const slots = n === 1 ? [[352, 184]] : n === 2 ? [[318, 174], [404, 190]] : [[296, 168], [366, 182], [436, 196]];
       let order = B.enemies.map((e, i) => i);
       if (boss >= 0 && n === 3) { order = order.filter(i => i !== boss); order.splice(1, 0, boss); }
       order.forEach((ei, si) => {
         const e = B.enemies[ei];
         const [x, y] = slots[si];
-        e.x = x; e.y = y; e.depth = 0.8 + (y - 140) / 160;
+        e.x = x; e.y = y; e.depth = 0.86 + (y - 172) / 120;
         const halfW = 34 * (e.holo ? 2.0 : 2.2) * e.scale * e.depth / 2;
         e.x = Math.min(e.x, BW - halfW - 2); // keep the sprite inside the screen
       });
@@ -1544,10 +1562,10 @@
       await sleep(1000);
     }
     // Guard ring: spend all orbs of the most plentiful element (max 8) → defensive buff by element
-    async function guard() {
+    async function guard(chosen) {
       const counts = {};
       p.orbs.forEach(o => { counts[o] = (counts[o] || 0) + 1; });
-      const el = ORB_ORDER.filter(e => counts[e]).sort((a, b) => counts[b] - counts[a])[0];
+      const el = chosen && counts[chosen] ? chosen : ORB_ORDER.filter(e => counts[e]).sort((a, b) => counts[b] - counts[a])[0];
       if (!el) return;
       const n = Math.min(8, counts[el]);
       for (let i = 0; i < n; i++) p.orbs.splice(p.orbs.indexOf(el), 1);
@@ -1656,76 +1674,91 @@
       resolveBattle({ win: true, glimmer, xp, levelUp, lv: job.lv, drops, shards });
     }
 
-    // ---- HUD (Mobius-style) ----
+    // ---- HUD (landscape: mission / boss / guardian / element drive / ability cards) ----
     const segs = c => c.kind === 'normal' ? '<span class="lbl">通常</span>'
       : Object.entries(c.cost).flatMap(([e, n]) => Array.from({ length: n }, () => `<i data-e="${e}"></i>`)).join('');
-    const sideBtn = (c, side) => c ? `<button type="button" class="abtn ${side}" data-id="${c.id}" aria-label="${esc(c.name)}">
-        <span class="ic">${c.icon ? `<img src="${img(c.icon)}" alt="">` : ''}</span>
-        <span class="segs">${segs(c)}</span></button>` : '<div class="abtn empty"></div>';
-    $('.bt-left').innerHTML = ['kin', 'ene', 'pow'].map(k => sideBtn(C[k], 'wpn')).join('');
-    $('.bt-right').innerHTML = ['mel', 'gre', 'cls'].map(k => sideBtn(C[k], 'skl')).join('');
+    const WLABEL = { kin: 'キネティック', ene: 'エネルギー', pow: 'パワー' };
+    const wpnBtn = k => C[k] ? `<button type="button" class="abtn wpn" data-id="${k}" aria-label="${esc(C[k].name)}">
+        <span class="ic">${C[k].icon ? `<img src="${img(C[k].icon)}" alt="">` : ''}</span><span class="segs">${segs(C[k])}</span><small>${WLABEL[k]}</small></button>`
+      : `<div class="abtn wpn empty"><small>${WLABEL[k]}</small></div>`;
+    $('.bt-left').innerHTML = ['kin', 'ene', 'pow'].map(wpnBtn).join('');
+    const ABL = { mel: '近接', gre: 'グレネード', cls: 'クラス' };
+    const short = t => { const x = String(t || '').replace(/\s+/g, ' '); return x.length > 34 ? x.slice(0, 33) + '…' : x; };
+    const elName = e => (e === 'any' || !e ? '' : ELEMENT_NAME[e] || '');
+    const cardHtml = (k, c, plug) => {
+      const cost = c?.cost ? Object.values(c.cost).reduce((a2, b2) => a2 + b2, 0) : 0;
+      const el2 = c?.el || p.element;
+      return `<button type="button" class="abtn skl L-card" data-id="${k}" style="--c:${Sprites.ELEMENT_COLORS[el2] || '#ccc'}" aria-label="${esc(c?.name || '')}">
+        <span class="L-gemc">${cost}</span><span class="ic">${c?.icon ? `<img src="${img(c.icon)}" alt="">` : ''}</span>
+        <b>${esc(c?.name || '-')}</b><small>${esc(short(plug?.d))}</small><span class="segs">${c ? segs(c) : ''}</span>
+        <em>${esc(ABL[k])}${elName(el2) ? ' · ' + elName(el2) : ''}</em></button>`;
+    };
+    const sup = p.abil.sup;
+    $('.bt-right').innerHTML = `<button type="button" class="L-card spcard" style="--c:${Sprites.ELEMENT_COLORS[p.element] || '#ffd36a'}" aria-label="スーパー">
+        <span class="L-gemc">S</span><span class="ic">${sup ? `<img src="${img(sup.i)}" alt="">` : ''}</span>
+        <b>${esc(sup?.n || 'スーパー')}</b><small>${esc(short(sup?.d))}</small><span class="L-spg"><i></i></span><em>スーパー · ${esc(ELEMENT_NAME[p.element] || '')}</em></button>`
+      + ['gre', 'mel', 'cls'].map(k => C[k] ? cardHtml(k, C[k], p.abil[k]) : '<div class="L-card empty"></div>').join('');
     $$('.abtn[data-id]').forEach(b => b.onclick = ev => {
       ev.stopPropagation();
       const c = C[b.dataset.id];
       if (c.kind === 'normal') doAction(normalAttack);
       else doAction(() => useCard(c));
     });
-    const orbCss = e => { const c = Sprites.ELEMENT_COLORS[e]; return `background:radial-gradient(circle at 35% 30%,#fff 0 10%,${c} 42%,${Sprites.shade(c, -90)} 100%)`; };
-    function drawRing() {
-      const rc = $('.ring canvas').getContext('2d');
-      const R = 96;
-      rc.clearRect(0, 0, 192, 192);
-      const sorted = ORB_ORDER.flatMap(e => p.orbs.filter(o => o === e));
-      const seg = (Math.PI * 2) / MAX_ORBS;
-      for (let i = 0; i < MAX_ORBS; i++) {
-        rc.beginPath();
-        rc.arc(R, R, 80, -Math.PI / 2 + i * seg + 0.03, -Math.PI / 2 + (i + 1) * seg - 0.03);
-        rc.strokeStyle = sorted[i] ? Sprites.ELEMENT_COLORS[sorted[i]] : 'rgba(255,255,255,0.10)';
-        rc.lineWidth = 22; rc.stroke();
-      }
-      const grd = rc.createRadialGradient(R, R, 10, R, R, 62);
-      grd.addColorStop(0, '#2a2c33'); grd.addColorStop(1, '#0c0d10');
-      rc.beginPath(); rc.arc(R, R, 62, 0, Math.PI * 2); rc.fillStyle = grd; rc.fill();
-      rc.lineWidth = 3; rc.strokeStyle = 'rgba(255,255,255,0.35)'; rc.stroke();
-      if (B.ringHold > 0) {
-        rc.beginPath(); rc.arc(R, R, 62, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, B.ringHold));
-        rc.strokeStyle = '#ffffff'; rc.lineWidth = 8; rc.stroke();
-      }
-    }
+    $('.spcard').onclick = ev => { ev.stopPropagation(); if (p.superG >= 100 && p.abil.sup) doAction(useSuper); else toast('スーパーゲージが溜まると使えます'); };
+    // Element drive: tap an element = spend it for its defensive effect
+    $$('.L-gem').forEach(b => b.onclick = ev => { ev.stopPropagation(); const e = b.dataset.e; if (!p.orbs.includes(e)) { toast(`${ELEMENT_NAME[e]}のエレメントがありません`); return; } doAction(() => guard(e)); });
     const BUFF_ICONS = [
       ['barricade', '#79bbff', 'shield'], ['armor', '#ff8a1e', 'shield'], ['evadeUp', '#79bbff', 'speed'],
       ['weave', '#5fd970', 'heal'], ['regen', '#5fd970', 'heal'], ['gunslinger', '#e2c770', 'up'], ['evade', '#e2c770', 'speed'],
     ];
+    const fmt = n => Math.round(n).toLocaleString();
     function updateHud() {
-      $('.m-hpv').innerHTML = `${p.hp.toLocaleString()}<small>/${p.maxHp.toLocaleString()}</small>${p.shield ? `<em>+${p.shield}</em>` : ''}`;
-      $('.m-hpbar i').style.width = (p.hp / p.maxHp * 100) + '%';
-      $('.m-spbar i').style.width = p.superG + '%';
+      const busy = B.busy || !!B.done;
+      // guardian
+      $('.m-hpv').innerHTML = `${fmt(p.hp)} / ${fmt(p.maxHp)}`;
+      $('.m-hpbar-i').style.width = (p.hp / p.maxHp * 100) + '%';
+      const shMax = Math.max(1, Math.round(p.maxHp * 0.5));
+      $('.L-shd').style.width = Math.min(100, (p.shield || 0) / shMax * 100) + '%';
+      $('.L-shdv').textContent = `${fmt(p.shield || 0)} / ${fmt(shMax)}`;
       const sp = $('.sp');
       sp.style.setProperty('--g', p.superG + '%');
-      sp.disabled = B.busy || !!B.done || p.superG < 100 || !p.abil.sup;
-      sp.classList.toggle('ready', p.superG >= 100 && !B.busy && !B.done);
+      sp.disabled = busy || p.superG < 100 || !p.abil.sup;
+      sp.classList.toggle('ready', p.superG >= 100 && !busy);
+      const spc = $('.spcard');
+      spc.querySelector('.L-spg i').style.width = p.superG + '%';
+      spc.classList.toggle('ready', p.superG >= 100 && !busy && !!p.abil.sup);
+      spc.disabled = busy;
       $('.score').textContent = (B.score || 0).toLocaleString();
       if (B.scoreAdd) { const sa = $('.m-scoreadd'); sa.textContent = '+' + B.scoreAdd.toLocaleString(); sa.classList.remove('show'); void sa.offsetWidth; sa.classList.add('show'); B.scoreAdd = 0; }
-      const sorted = ORB_ORDER.flatMap(e => p.orbs.filter(o => o === e));
-      $('.m-orbs').innerHTML = Array.from({ length: MAX_ORBS }, (_, i) => sorted[i] ? `<span class="orb" style="${orbCss(sorted[i])}"></span>` : '<span class="orb empty"></span>').join('');
-      // target: turns until it acts (dots), break gauge, counter chip
+      // elements: counts per element (top) and the element drive gems (bottom)
+      const cnt = {};
+      p.orbs.forEach(o => { cnt[o] = (cnt[o] || 0) + 1; });
+      $('.m-orbs').innerHTML = ORB_ORDER.map(e => `<span class="L-oc ${cnt[e] ? '' : 'zero'}" style="--c:${Sprites.ELEMENT_COLORS[e]}"><i></i><b>${cnt[e] || 0}</b></span>`).join('')
+        + `<span class="L-ototal">${p.orbs.length}/${MAX_ORBS}</span>`;
+      $$('.L-gem').forEach(b => { const n = cnt[b.dataset.e] || 0; b.querySelector('b').textContent = n; b.disabled = busy || !n; });
+      // target / boss panel
       const t = B.enemies[B.target];
       if (t && t.hp > 0) {
         const max = Content.enemyDef(t.key).brk;
+        $('.L-bname').textContent = t.n;
+        $('.L-bhp').style.width = (t.hp / t.maxHp * 100) + '%';
+        $('.L-bhpv').textContent = `${fmt(t.hp)} / ${fmt(t.maxHp)}`;
         $('.m-dots').innerHTML = Array.from({ length: t.spd }, (_, i) => `<span class="${i < t.counter ? 'on' : ''}"></span>`).join('');
         $('.m-brk i').style.width = (t.broken > 0 ? 100 : (1 - t.bk / max) * 100) + '%';
         $('.m-brk').classList.toggle('broken', t.broken > 0);
+        $('.L-bbrk').textContent = t.broken > 0 ? 'BREAK!' : `${Math.round((1 - t.bk / max) * 100)}%`;
         $('.m-cnt').textContent = t.broken > 0 ? 'B' : t.counter;
-        $('.m-tinfo').innerHTML = `${esc(t.n)} ― 弱点 <span style="color:${Sprites.ELEMENT_COLORS[t.weak]}">${ELEMENT_NAME[t.weak]}</span> · ${t.broken > 0 ? '<b style="color:#ffd84a">BREAK中</b>' : `ブレイクまで ${Math.round(t.bk / max * 100)}%`}`;
+        const wc = Sprites.ELEMENT_COLORS[t.weak];
+        $('.m-tinfo').innerHTML = `<span style="color:${wc}"><i style="background:${wc}"></i>${ELEMENT_NAME[t.weak]}弱点</span>`
+          + (t.boss ? '<span class="bossc">ボス</span>' : '') + (t.broken > 0 ? '<span class="brkc">BREAK中 · ダメージ2倍</span>' : '');
       }
-      // ability cards: one segment per cost orb, lit while that orb is available
+      // ability cards / weapons: lit cost segments, usable state
       $$('.abtn[data-id]').forEach(b => {
         const c = C[b.dataset.id];
         const ok = c.kind === 'normal' || canPay(p.orbs, c.cost);
-        b.disabled = B.busy || !!B.done || !ok;
+        b.disabled = busy || !ok;
         b.classList.toggle('ready', ok && !B.busy && c.kind !== 'normal');
-        const left = {};
-        p.orbs.forEach(o => { left[o] = (left[o] || 0) + 1; });
+        const left = { ...cnt };
         let anyLeft = p.orbs.length;
         b.querySelectorAll('i[data-e]').forEach(seg => {
           const e = seg.dataset.e;
@@ -1734,11 +1767,9 @@
           else { lit = (left[e] || 0) > 0; if (lit) left[e]--; seg.style.background = lit ? Sprites.ELEMENT_COLORS[e] : ''; }
         });
       });
-      $('.m-buffs').innerHTML = BUFF_ICONS.filter(([k]) => p.buffs[k]).map(([, col]) => `<span style="border-color:${col};background:linear-gradient(${Sprites.shade(col, -40)},${Sprites.shade(col, -110)})"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 20V6M6 12l6-6 6 6"/></svg></span>`).join('')
-        + (p.shield ? `<span style="border-color:#b084eb;background:linear-gradient(#5a3a8a,#24143a)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span>` : '');
-      $('.ring').classList.toggle('off', B.busy || !!B.done || !p.orbs.length);
+      $('.m-buffs').innerHTML = BUFF_ICONS.filter(([k]) => p.buffs[k]).map(([, col]) => `<span style="border-color:${col};background:linear-gradient(${Sprites.shade(col, -40)},${Sprites.shade(col, -110)})"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><path d="M12 20V6M6 12l6-6 6 6"/></svg></span>`).join('')
+        + (p.shield ? `<span style="border-color:#b084eb;background:linear-gradient(#5a3a8a,#24143a)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4"><path d="M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"/></svg></span>` : '');
       $('.m-auto').classList.toggle('on', !!B.auto);
-      drawRing();
     }
     $('.sp').onclick = () => doAction(useSuper);
     const flee = () => { B.done = 'lose'; running = false; clearInterval(autoTimer); resolveBattle({ win: false }); };
@@ -1748,10 +1779,10 @@
         <ul style="line-height:1.9;padding-left:18px;margin:12px 0">
           <li>画面タップ:通常攻撃(キネティック武器)。敵をタップでターゲット切替</li>
           <li>通常攻撃でエレメントが溜まる(画面上部)</li>
-          <li>左:エネルギー / パワー武器、右:近接 / グレネード / クラス(必要エレメントで使用)</li>
+          <li>左下:キネティック(通常) / エネルギー / パワー武器、右下カード:スーパー / グレネード / 近接 / クラス(左上の数字=必要エレメント)</li>
           <li>弱点エレメントでブレイクゲージを削り、BREAK でダメージ2倍</li>
-          <li>左下 SUPER:ゲージ満タンでタップ / 右下 GUARD:長押しでエレメントを消費して防御</li>
-          <li>FULL AUTO:自動で戦闘 / TARGET VIEW:ターゲット切替</li>
+          <li>SUPER:ゲージ満タンでタップ / ELEMENT DRIVE:属性をタップしてエレメントを消費、属性ごとの防御効果</li>
+          <li>AUTO:自動で戦闘 / TARGET:ターゲット切替</li>
         </ul>
         <button class="pbtn fl" style="border-color:var(--bad);color:var(--bad)">撤退する(報酬なし)</button></div></div>`);
       m.querySelector('.x').onclick = () => m.remove();
@@ -1769,7 +1800,7 @@
     const autoStep = () => {
       if (!B.auto || B.busy || B.done) return;
       if (p.superG >= 100 && p.abil.sup) return doAction(useSuper);
-      if (p.hp < p.maxHp * 0.35 && p.orbs.length >= 3) return doAction(guard);
+      if (p.hp < p.maxHp * 0.35 && p.orbs.length >= 3) return doAction(() => guard());
       const t = B.enemies[B.target];
       const cards = ['pow', 'gre', 'mel', 'ene'].map(k => C[k]).filter(c => c && canPay(p.orbs, c.cost));
       const pickC = cards.find(c => t && c.el === t.weak) || cards[0];
@@ -1782,24 +1813,6 @@
       if (B.auto) autoTimer = setInterval(autoStep, 250);
       updateHud();
     };
-    // Guard ring long press (timer-based so it works even when animation frames are throttled)
-    const HOLD_MS = 600;
-    let holdStart = 0, holdTimer = 0, holdRaf = 0;
-    const ringEl = $('.ring');
-    const stopHold = () => { clearTimeout(holdTimer); cancelAnimationFrame(holdRaf); holdTimer = holdRaf = 0; B.ringHold = 0; drawRing(); };
-    ringEl.addEventListener('pointerdown', ev => {
-      ev.preventDefault();
-      if (B.busy || B.done || !p.orbs.length) return;
-      holdStart = performance.now();
-      const tick = now => { B.ringHold = (now - holdStart) / HOLD_MS; drawRing(); holdRaf = requestAnimationFrame(tick); };
-      holdRaf = requestAnimationFrame(tick);
-      holdTimer = setTimeout(() => { stopHold(); doAction(guard); }, HOLD_MS);
-    });
-    ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => ringEl.addEventListener(t, () => {
-      if (!holdTimer) return;
-      if (performance.now() - holdStart < HOLD_MS * 0.3) toast('長押しでエレメントを消費して防御');
-      stopHold();
-    }));
     // Tap: enemy = target + attack, elsewhere = attack current target
     canvas.addEventListener('pointerup', ev => {
       const r = canvas.getBoundingClientRect();
@@ -1864,7 +1877,7 @@
       const bw = Math.max(30, Math.min(58, w * 0.9));
       const top = Math.max(26, b.y - 12);
       const ux = clamp(e.x, bw / 2 + 4, BW - bw / 2 - 12);
-      txt(e.n, ux, top - 2, e.boss ? 7 : 6, e.boss ? '#ffd28a' : '#ffffff');
+      if (i === B.target) txt(e.n, ux, top - 2, e.boss ? 7 : 6, e.boss ? '#ffd28a' : '#ffffff');   // full info is in the boss panel
       bar(ux - bw / 2, top, bw, 3, e.hp / e.maxHp, '#ff5d5d', '#300');
       bar(ux - bw / 2, top + 4.5, bw, 2, e.broken > 0 ? 1 : e.bk / Content.enemyDef(e.key).brk, e.broken > 0 ? '#ffd84a' : Sprites.ELEMENT_COLORS[e.weak], '#111');
       const cx = ux + bw / 2 + 6;
