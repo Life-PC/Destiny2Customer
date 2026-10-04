@@ -1544,6 +1544,7 @@
           <button type="button" class="m-tv">TARGET</button><button type="button" class="m-auto">AUTO</button><button type="button" class="m-help">HELP</button></div>
         <div class="bt-log"></div>
         <div class="m-banner"><span></span></div>
+        <div class="L-dock"></div>
         <section class="L-guard">
           <div class="L-gh"><span class="L-crest">${iconSvg(ICON.flag)}</span><b>GUARDIAN · ${esc(CLASS_NAME[p.cls])}</b><em>${esc(p.job.name)}</em><span class="m-buffs"></span></div>
           <div class="L-grow"><span>HP</span><div class="L-bar php"><i class="m-hpbar-i"></i></div><em class="m-hpv"></em></div>
