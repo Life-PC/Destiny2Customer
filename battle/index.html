@@ -700,6 +700,12 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 .hub .J-art { flex: 1; display: flex; align-items: flex-end; justify-content: center; min-height: 0; padding: 1cqw 0; }
 .hub .J-art canvas, .hub .J-art img { max-width: 100%; max-height: 100%; width: auto !important; height: auto !important; object-fit: contain; image-rendering: pixelated; }
 .hub .J-art { overflow: hidden; align-self: stretch; }
+/* painted card: 9-slice so the sun / frame top keeps its shape and only the dark middle stretches (slices in px of the 1024-wide art) */
+.hub .J-big.art, .hub .J-card.art { border: 0; background: none; box-shadow: none; isolation: isolate; }
+.hub .J-big.art { --w: 19cqw; }
+.hub .J-card.art { --w: 9.4cqw; }
+.hub .J-big.art::before, .hub .J-card.art::before { content: ''; position: absolute; inset: 0; z-index: -1; border-style: solid; border-image: var(--art) 740 70 200 70 fill / calc(var(--w) * 740 / 1024) calc(var(--w) * 70 / 1024) calc(var(--w) * 200 / 1024) stretch; }
+.hub .J-card.art.sel { box-shadow: none; filter: drop-shadow(0 0 0.8cqw var(--c)); }
 .hub .J-bn { font: 700 1.2cqw 'Noto Sans JP', sans-serif; letter-spacing: 0.2cqw; text-align: center; }
 .hub .J-list { position: absolute; left: 23cqw; right: 30cqw; top: 3cqw; bottom: 3cqw; display: flex; flex-direction: column; }
 .hub .J-cards { flex: 1; display: flex; gap: 1cqw; overflow-x: auto; overflow-y: hidden; padding: 1.6cqw 0.4cqw 1cqw; scroll-snap-type: x mandatory; }
@@ -809,10 +815,10 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js?v=28"></script>
-<script src="pixelart.js?v=28"></script>
-<script src="sprites.js?v=28"></script>
-<script src="content.js?v=28"></script>
-<script src="game.js?v=28"></script>
+<script src="../manifest-trim.js?v=29"></script>
+<script src="pixelart.js?v=29"></script>
+<script src="sprites.js?v=29"></script>
+<script src="content.js?v=29"></script>
+<script src="game.js?v=29"></script>
 </body>
 </html>

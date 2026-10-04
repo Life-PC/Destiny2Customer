@@ -1311,6 +1311,9 @@
     const prev = S.activeJob; S.activeJob = job.id;
     try { return buildPlayer(); } finally { S.activeJob = prev; }
   }
+  // painted job-card backgrounds per element (art/ui/job_<element>.webp, 1024x1536 with the frame)
+  const JOB_BG = new Set(['solar']);
+  const jobBg = e => (JOB_BG.has(e) ? ` art" style="--art:url(art/ui/job_${e}.webp);` : '');
   function renderJobs2(body) {
     const sorted = [...S.jobs].sort((a, b) => (b.r || 3) - (a.r || 3) || b.lv - a.lv);
     const view = jobById(viewJobId) || activeJob();
@@ -1321,9 +1324,9 @@
     const ab = k => { const p = Data.plugs.get(view[k]); const kind = ABIL_KINDS.find(x => x.k === k); return p ? `<div class="J-ab"><img src="${img(p.i)}" alt=""><div><b>${esc(p.n)}</b><small>${kind.n}</small></div></div>` : ''; };
     const sup = Data.plugs.get(view.sup);
     body.innerHTML = `
-      <div class="J-big" style="--c:${col}"><div class="J-bh"><span class="J-el"><i></i>${ELEMENT_NAME[e] || ''}</span><span class="stars r${view.r || 3}">${'★'.repeat(view.r || 3)}</span></div><div class="J-art"></div><b class="J-bn">${esc(view.name)}</b></div>
+      <div class="J-big${jobBg(e)}" style="--c:${col}"><div class="J-bh"><span class="J-el"><i></i>${ELEMENT_NAME[e] || ''}</span><span class="stars r${view.r || 3}">${'★'.repeat(view.r || 3)}</span></div><div class="J-art"></div><b class="J-bn">${esc(view.name)}</b></div>
       <section class="J-list"><div class="H-ptitle big">${svgI(NAV[2][2])}JOB SELECT <small>${S.jobs.length} JOBS · ジョブを選んで装備</small></div>
-        <div class="J-cards">${sorted.map(j => { const ee = subElement(Data.byHash.get(j.sub)); return `<button type="button" class="J-card ${j.id === view.id ? 'sel' : ''} ${j.id === S.activeJob ? 'act' : ''}" data-job="${j.id}" style="--c:${elColor(ee)}">
+        <div class="J-cards">${sorted.map(j => { const ee = subElement(Data.byHash.get(j.sub)); return `<button type="button" class="J-card ${j.id === view.id ? 'sel' : ''} ${j.id === S.activeJob ? 'act' : ''}${jobBg(ee)}" data-job="${j.id}" style="--c:${elColor(ee)}">
           <span class="J-el"><i></i>${ELEMENT_NAME[ee] || ''}</span><span class="stars r${j.r || 3}">${'★'.repeat(j.r || 3)}</span>
           <canvas data-cls="${j.cl}" data-el="${ee}"></canvas><b>${esc(j.name)}</b><small>${CLASS_NAME[j.cl]} · Lv.${j.lv}</small>${j.id === S.activeJob ? '<em>EQUIPPED</em>' : ''}</button>`; }).join('')}</div></section>
       <aside class="H-panel J-info" style="--c:${col}">
