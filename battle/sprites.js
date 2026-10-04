@@ -1004,6 +1004,25 @@
     return o;
   }
 
+  /* Per-slot look from the equipped armor icons (API images): each slot's dominant icon color re-skins
+   * that slot's main material on the rig. Dark materials (hoods / coats) keep a dark value. */
+  const SLOT_MAT = {
+    titan: { head: 'W', arms: 'W', chest: 'W', legs: 'W', cls: 'C' },
+    hunter: { head: 'N', arms: 'W', chest: 'N', legs: 'W', cls: 'C' },
+    warlock: { head: 'W', arms: 'W', chest: 'N', legs: 'U' },
+  };
+  async function guardianSlotPal(cls, urls) {
+    const map = SLOT_MAT[PixelArt.CLASS_KEYS[cls] || 'titan'];
+    const out = {};
+    await Promise.all(Object.entries(map).map(async ([slot, mat]) => {
+      const c = urls[slot] ? await iconColor(urls[slot]) : null;
+      if (!c) return;
+      const [hh, ss] = hexToHsl(c);
+      out[slot] = { [mat]: mat === 'N' || mat === 'U' ? hslToHex(hh, Math.min(ss, 0.45), 0.2) : c };
+    }));
+    return out;
+  }
+
   function gridBackground(w, h) {
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
@@ -1020,6 +1039,6 @@
 
   root.Sprites = {
     ELEMENT_COLORS, FLOATING, guardianSprite, guardianRig, drawRig, ghostSprite, enemySprite, weaponSprite,
-    drawLive, loadImage, pixelatedBackground, pixelatedHologram, iconColor, armorPalette, gridBackground, lighten, shade,
+    drawLive, loadImage, pixelatedBackground, pixelatedHologram, iconColor, armorPalette, guardianSlotPal, gridBackground, lighten, shade,
   };
 })(window);

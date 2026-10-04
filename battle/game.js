@@ -1131,7 +1131,10 @@
     try { B.bg = act ? await Sprites.pixelatedBackground(img(act.img), 90, 160) : Sprites.gridBackground(90, 160); }
     catch { B.bg = Sprites.gridBackground(90, 160); }
     const vis = p.element === 'prism' ? 'prism' : p.element;
-    B.guardian = Sprites.guardianRig(p.cls, vis); // part-based rig (animated)
+    // armor look per slot from the equipped armor's API icons (head / arms / chest / legs / class item)
+    try { B.slotPal = await Sprites.guardianSlotPal(p.cls, Object.fromEntries(ARMOR_SLOTS.map(s => [s, p.items[s]?.def?.i ? img(p.items[s].def.i) : null]))); }
+    catch { B.slotPal = {}; }
+    B.guardian = Sprites.guardianRig(p.cls, vis, B.slotPal); // part-based rig (animated)
     const gc = p.ghost ? await Sprites.iconColor(img(p.ghost.i)) : null;
     B.ghostSprite = Sprites.ghostSprite(vis, gc ? { A: gc, a: Sprites.shade(gc, -50) } : null);
     B.weapons = {};
@@ -1832,7 +1835,7 @@
         g.translate(BW / 2, BH * 0.42); g.rotate(-0.18);
         g.fillStyle = s.color; g.fillRect(-BW, -34, BW * 2, 68);
         g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(-BW, -30, BW * 2, 60);
-        const fs = Sprites.guardianSprite(p.cls, p.element === 'prism' ? 'prism' : p.element);
+        const fs = Sprites.guardianSprite(p.cls, p.element === 'prism' ? 'prism' : p.element, B.slotPal);
         g.imageSmoothingEnabled = false;
         const cx = -BW * 0.9 + slide * BW * 0.6 + (t / 1150) * 12;
         g.drawImage(fs, cx, -48, 96, 96);

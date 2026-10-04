@@ -158,6 +158,103 @@
     return rows;
   }
 
+  /* ---------------- lit pixel shading ----------------
+   * Hand-shaded look from shapes: each part is rasterized at k× resolution, given a height field
+   * (domes for ellipses / limbs, bevelled plates for polygons / rects), lit from the top-left, and
+   * reduced to the material's 5-tone ramp at 1×. Adds specular pixels on shiny materials (mat.spec),
+   * dark seams where a part sits behind another, and the outer outline. Same output as shadeRows. */
+  const LV = (() => { const v = [-0.55, -0.75, 0.62], n = Math.hypot(...v); return v.map(x => x / n); })();
+  const HV = (() => { const v = [LV[0], LV[1], LV[2] + 1], n = Math.hypot(...v); return v.map(x => x / n); })();
+  function scaleShape(s, k) {
+    const [t, m] = s;
+    if (t === 'e') return [t, m, s[2] * k, s[3] * k, s[4] * k, s[5] * k];
+    if (t === 'r') return [t, m, s[2] * k, s[3] * k, (s[4] + 1) * k - 1, (s[5] + 1) * k - 1];
+    if (t === 'p') return [t, m, s[2].map(([x, y]) => [x * k, y * k])];
+    return [t, m, (s[2] + 0.5) * k, (s[3] + 0.5) * k, (s[4] + 0.5) * k, (s[5] + 0.5) * k, (s[6] || 1) * k];
+  }
+  function shadeLit(W, H, shapes, mats, outline = OUTLINE, k = 4) {
+    const HW = W * k, HH = H * k;
+    const hi = rasterize(HW, HH, shapes.map(s => scaleShape(s, k)));
+    const P = hi.parts;
+    const solidCh = ch => ch !== '.' && ch !== ' ';
+    // distance to the edge of the own shape (chamfer)
+    const D = new Float32Array(HW * HH);
+    for (let y = 0; y < HH; y++) for (let x = 0; x < HW; x++) D[y * HW + x] = solidCh(hi[y][x]) ? 1e6 : 0;
+    const dv = (x, y, p) => (x < 0 || y < 0 || x >= HW || y >= HH || P[y][x] !== p ? 0 : D[y * HW + x]);
+    for (let y = 0; y < HH; y++) for (let x = 0; x < HW; x++) {
+      const i = y * HW + x; if (!D[i]) continue; const p = P[y][x];
+      D[i] = Math.min(D[i], dv(x - 1, y, p) + 1, dv(x, y - 1, p) + 1, dv(x - 1, y - 1, p) + 1.41, dv(x + 1, y - 1, p) + 1.41);
+    }
+    const maxD = new Float32Array(shapes.length);
+    for (let y = HH - 1; y >= 0; y--) for (let x = HW - 1; x >= 0; x--) {
+      const i = y * HW + x; if (!D[i]) continue; const p = P[y][x];
+      D[i] = Math.min(D[i], dv(x + 1, y, p) + 1, dv(x, y + 1, p) + 1, dv(x + 1, y + 1, p) + 1.41, dv(x - 1, y + 1, p) + 1.41);
+      if (D[i] > maxD[p]) maxD[p] = D[i];
+    }
+    const Hf = new Float32Array(HW * HH);
+    for (let i = 0; i < HW * HH; i++) {
+      if (!D[i]) continue;
+      const p = P[Math.floor(i / HW)][i % HW], t = shapes[p][0];
+      const round = t === 'e' || t === 'l';
+      const R = Math.max(1, round ? maxD[p] : Math.min(maxD[p], 2.4 * k));
+      const q = Math.min(D[i] / R, 1);
+      Hf[i] = R * Math.sqrt(1 - (1 - q) * (1 - q)) * (round ? 1 : 0.85);
+    }
+    const hAt = (x, y, p, own) => (x < 0 || y < 0 || x >= HW || y >= HH || P[y][x] !== p ? own : Hf[y * HW + x]);
+    // light every hi-res pixel, then reduce k×k blocks (majority material / part, mean light)
+    const lo = Array.from({ length: H }, () => Array(W).fill(null));
+    for (let Y = 0; Y < H; Y++) for (let X = 0; X < W; X++) {
+      const cnt = new Map();
+      for (let yy = 0; yy < k; yy++) for (let xx = 0; xx < k; xx++) {
+        const x = X * k + xx, y = Y * k + yy, ch = hi[y][x];
+        if (!solidCh(ch)) continue;
+        const p = P[y][x], own = Hf[y * HW + x];
+        let nx = -(hAt(x + 1, y, p, own) - hAt(x - 1, y, p, own)) / 2, ny = -(hAt(x, y + 1, p, own) - hAt(x, y - 1, p, own)) / 2, nz = 1;
+        const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl;
+        const dif = Math.max(0, nx * LV[0] + ny * LV[1] + nz * LV[2]);
+        const sp = Math.pow(Math.max(0, nx * HV[0] + ny * HV[1] + nz * HV[2]), 24);
+        const key = ch + '|' + p;
+        const c = cnt.get(key) || { ch, p, n: 0, dif: 0, sp: 0 };
+        c.n++; c.dif += dif; c.sp = Math.max(c.sp, sp);
+        cnt.set(key, c);
+      }
+      let best = null, tot = 0;
+      for (const c of cnt.values()) { tot += c.n; if (!best || c.n > best.n || (c.n === best.n && c.p > best.p)) best = c; }
+      if (best && tot >= k * k * 0.45) lo[Y][X] = { ch: best.ch, p: best.p, dif: best.dif / best.n, sp: best.sp };
+    }
+    const w = W + 2, h = H + 2, data = new Uint8ClampedArray(w * h * 4);
+    const put = (x, y, hex) => { const i = ((y + 1) * w + (x + 1)) * 4; const n = parseInt(hex.slice(1), 16); data[i] = n >> 16; data[i + 1] = (n >> 8) & 255; data[i + 2] = n & 255; data[i + 3] = 255; };
+    const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? null : lo[y][x]);
+    const group = ch => (mats[ch] && mats[ch].g) || ch;
+    const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (let y = -1; y <= H; y++) for (let x = -1; x <= W; x++) {
+      const c = at(x, y);
+      if (!c) { if (N4.some(([dx, dy]) => { const n = at(x + dx, y + dy); return n && n.ch !== 'K'; })) put(x, y, outline); continue; }
+      if (c.ch === 'K') {
+        const nb = N4.map(([dx, dy]) => at(x + dx, y + dy));
+        const mat = nb.map(n => n && mats[n.ch]).find(m => m && !m.glow);
+        put(x, y, nb.every(Boolean) && mat && outline === OUTLINE ? ramp(mat.c)[0] : outline);
+        continue;
+      }
+      const m = mats[c.ch];
+      if (!m) continue;
+      if (m.glow) { put(x, y, m.c); continue; }
+      const rp = ramp(m.c);
+      let tone = 0.35 + c.dif * 4.1 + (0.5 - y / H) * 0.5;
+      // a part in front (later shape) right next to this pixel: seam / contact shadow
+      for (const [dx, dy] of N4) {
+        const n = at(x + dx, y + dy);
+        if (!n || n.p <= c.p || (mats[n.ch] || {}).glow) continue;
+        tone = group(n.ch) !== group(c.ch) ? Math.min(tone, 0.6) : tone - 1.1;
+        break;
+      }
+      const ti = Math.max(0, Math.min(4, Math.round(tone)));
+      if ((m.spec || 0) > 0 && c.sp * m.spec > 0.5 && ti >= 3) put(x, y, shadeHex(rp[4], 34));
+      else put(x, y, rp[ti]);
+    }
+    return { w, h, data };
+  }
+
   /* ---------------- guardians (64x64, facing right; ground at y≈62) ----------------
    * Built from PARTS so they can be animated (rotated around a joint) and re-skinned per
    * armor slot later (set bonuses). Each part:
@@ -263,6 +360,8 @@
     const p = { ...GUARDIANS[key].pal, ...(override || {}) };
     const m = { V: { c: shadeHex(elementColor, 50), glow: true }, E: { c: elementColor, glow: true }, c: { c: shadeHex(p.C, -30), g: 'C' } };
     for (const k of ['W', 'R', 'N', 'U', 'G', 'B', 'C', 'L', 'S']) if (p[k]) m[k] = { c: p[k] };
+    // shiny armor plates / trim get specular pixels; cloth and undersuit stay matte
+    for (const k of ['W', 'G', 'S', 'B', 'R']) if (m[k]) m[k].spec = k === 'G' || k === 'S' ? 1 : 0.8;
     return m;
   }
   const partCache = new Map();
@@ -275,7 +374,7 @@
    * (future armor-set looks) without touching the others. */
   function shadePart(key, id, elementColor, slotPal) {
     const part = GUARDIANS[key].parts.find(p => p.id === id);
-    return shadeRows(partRows(key, id), guardianMats(key, elementColor, slotPal && slotPal[part.slot]));
+    return shadeLit(64, 64, part.shapes, guardianMats(key, elementColor, slotPal && slotPal[part.slot]));
   }
   // Whole guardian at rest: parts overlaid back to front
   function composeGuardian(key, elementColor, slotPal) {
@@ -541,7 +640,7 @@
     return out;
   }
 
-  const api = { ramp, shadeHex, hexToHsl, hslToHex, shadeRows, rasterize, GUARDIANS, CLASS_KEYS, ARMOR_PART_SLOTS, guardianRows, guardianMats, shadePart, composeGuardian, ENEMY_SHAPES, enemyRows, MOTIONS, motionPose, OUTLINE };
+  const api = { ramp, shadeHex, hexToHsl, hslToHex, shadeRows, rasterize, shadeLit, GUARDIANS, CLASS_KEYS, ARMOR_PART_SLOTS, guardianRows, guardianMats, shadePart, composeGuardian, ENEMY_SHAPES, enemyRows, MOTIONS, motionPose, OUTLINE };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PixelArt = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
