@@ -568,6 +568,13 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 .land .L-card { position: relative; display: flex; flex-direction: column; align-items: center; padding: 0.6cqw 0.5cqw 0.5cqw; border-radius: 0.4cqw; cursor: pointer; color: inherit; text-align: center;
   background: linear-gradient(180deg, color-mix(in srgb, var(--c) 28%, #0c101c), #090c14 60%); border: 1px solid color-mix(in srgb, var(--c) 70%, transparent); box-shadow: 0 0 0 1px rgba(0,0,0,0.6), inset 0 0 1.2cqw color-mix(in srgb, var(--c) 25%, transparent); }
 .land .L-card.empty { opacity: 0.25; }
+/* skill cards share .abtn / .mob .abtn.skl rules (square aspect, vertical cost bars) — undo them so all 4 cards are the same height */
+.land .L-cards > .L-card { aspect-ratio: auto; width: auto; height: 100%; min-height: 0; overflow: hidden; }
+.land .L-card.skl .segs { flex-direction: row; padding: 0; min-height: 0; flex-wrap: nowrap; }
+.land .L-card.skl .segs i { width: 0.65cqw; height: 0.65cqw; border-radius: 0; }
+.land .L-card .ic { aspect-ratio: auto; flex: none; }
+.land .L-card b, .land .L-card small, .land .L-card em { flex: none; }
+.land .L-card em { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .land .L-card .L-gemc { position: absolute; left: -0.5cqw; top: -0.6cqw; width: 2.2cqw; height: 2.2cqw; display: grid; place-items: center; font: 700 1cqw 'Rajdhani', 'Noto Sans JP', sans-serif; color: #fff; z-index: 1; }
 .land .L-card .L-gemc::before { content: ''; position: absolute; inset: 0.25cqw; transform: rotate(45deg); background: #10141f; border: 1px solid var(--c); box-shadow: 0 0 0.6cqw var(--c); z-index: -1; }
 .land .L-card .ic { width: 4.8cqw; height: 4.8cqw; margin-top: 0.5cqw; border-radius: 0.3cqw; background: radial-gradient(color-mix(in srgb, var(--c) 45%, transparent), transparent 70%); display: grid; place-items: center; }
@@ -840,10 +847,10 @@ img.el-ic { width: 1.25em; height: 1.25em; object-fit: contain; vertical-align: 
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js?v=35"></script>
-<script src="pixelart.js?v=35"></script>
-<script src="sprites.js?v=35"></script>
-<script src="content.js?v=35"></script>
-<script src="game.js?v=35"></script>
+<script src="../manifest-trim.js?v=36"></script>
+<script src="pixelart.js?v=36"></script>
+<script src="sprites.js?v=36"></script>
+<script src="content.js?v=36"></script>
+<script src="game.js?v=36"></script>
 </body>
 </html>
