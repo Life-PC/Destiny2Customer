@@ -6,13 +6,24 @@
  *   GPT Image via ComfyUI API nodes (Comfy.org credits; key in env COMFY_API_KEY or .env):
  *   node tools/comfy-gen.js <out.png> "<prompt>" --engine gpt [--ref a.jpg --ref b.jpg ...]
  *                           [--model gpt-image-2] [--quality low|medium|high] [--size 1024x1536] [--bg transparent]
- * Uses SD1.5 (DreamShaper 8) + PixelArtRedmond LoRA by default. */
+ * Uses SD1.5 (DreamShaper 8) + PixelArtRedmond LoRA by default.
+ *   SDXL presets (--preset <name>; any explicit option still wins):
+ *     xl       DreamShaper XL Lightning, 6 steps, no LoRA          (fast fantasy / game art)
+ *     xlpixel  DreamShaper XL Lightning + Pixel Art XL LoRA        (detailed pixel art)
+ *     jugg     Juggernaut XL v9, 30 steps, no LoRA                 (painterly / realistic, slow)
+ *   [--sampler dpmpp_2m] [--scheduler karras] [--lora 0 = no LoRA] */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 
 const args = process.argv.slice(2);
-const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : d; };
+const PRESETS = {
+  xl: { ckpt: 'DreamShaperXL_Lightning.safetensors', steps: 6, cfg: 2, sampler: 'dpmpp_sde', scheduler: 'karras', lora: 0, w: 1344, h: 768 },
+  xlpixel: { ckpt: 'DreamShaperXL_Lightning.safetensors', steps: 8, cfg: 2, sampler: 'dpmpp_sde', scheduler: 'karras', loraName: 'pixel-art-xl.safetensors', lora: 1, w: 1344, h: 768 },
+  jugg: { ckpt: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', steps: 30, cfg: 4.5, sampler: 'dpmpp_2m_sde', scheduler: 'karras', lora: 0, w: 1344, h: 768 },
+};
+const preset = (() => { const i = args.indexOf('--preset'); return i >= 0 ? PRESETS[args[i + 1]] || {} : {}; })();
+const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : (k in preset ? preset[k] : d); };
 const out = args[0], prompt = args[1];
 if (!out || !prompt) { console.error('usage: comfy-gen.js <out.png> "<prompt>" [options]'); process.exit(1); }
 const HOST = { host: '127.0.0.1', port: +opt('port', 8188) };
@@ -51,14 +62,16 @@ const gptWf = () => {
   w.s = { class_type: 'SaveImage', inputs: { images: ['g', 0], filename_prefix: 'd2mobius/' + path.basename(out, path.extname(out)) } };
   return w;
 };
+const MC = loraW ? '2' : '1';   // model / clip source
 const wf = engine === 'gpt' ? gptWf() : {
   1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: ckpt } },
-  2: { class_type: 'LoraLoader', inputs: { model: ['1', 0], clip: ['1', 1], lora_name: lora, strength_model: loraW, strength_clip: loraW } },
-  3: { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 1], text: prompt } },
-  4: { class_type: 'CLIPTextEncode', inputs: { clip: ['2', 1], text: neg } },
+  // --lora 0 → no LoRA node (an SD1.5 LoRA cannot be applied to an SDXL checkpoint)
+  ...(loraW ? { 2: { class_type: 'LoraLoader', inputs: { model: ['1', 0], clip: ['1', 1], lora_name: lora, strength_model: loraW, strength_clip: loraW } } } : {}),
+  3: { class_type: 'CLIPTextEncode', inputs: { clip: [MC, 1], text: prompt } },
+  4: { class_type: 'CLIPTextEncode', inputs: { clip: [MC, 1], text: neg } },
   5: { class_type: 'EmptyLatentImage', inputs: { width: W, height: H, batch_size: 1 } },
-  6: { class_type: 'KSampler', inputs: { model: ['2', 0], positive: ['3', 0], negative: ['4', 0], latent_image: init ? ['10', 0] : ['5', 0],
-    seed, steps: +opt('steps', 26), cfg: +opt('cfg', 7), sampler_name: 'dpmpp_2m', scheduler: 'karras', denoise: init ? +opt('denoise', 0.6) : 1 } },
+  6: { class_type: 'KSampler', inputs: { model: [MC, 0], positive: ['3', 0], negative: ['4', 0], latent_image: init ? ['10', 0] : ['5', 0],
+    seed, steps: +opt('steps', 26), cfg: +opt('cfg', 7), sampler_name: opt('sampler', 'dpmpp_2m'), scheduler: opt('scheduler', 'karras'), denoise: init ? +opt('denoise', 0.6) : 1 } },
   7: { class_type: 'VAEDecode', inputs: { samples: ['6', 0], vae: ['1', 2] } },
   ...(init ? {
     9: { class_type: 'LoadImage', inputs: { image: initName } },
