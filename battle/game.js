@@ -1276,7 +1276,7 @@
     const stages = sel.filter ? Content.STAGES.filter(sel.filter) : [];
     const rec = stages.length ? (stages.find(s => !S.cleared[s.id]) || stages[stages.length - 1]) : null;
     body.innerHTML = `
-      <div class="H-stars"></div>
+      <div class="M-bg"><img src="art/ui/modes_bg.webp" alt="" onerror="this.remove()"></div><div class="H-stars"></div>
       <div class="H-ptitle big">${svgI(NAV[1][2])}MODE SELECT</div>
       <div class="M-orbit"><i class="o1"></i><i class="o2"></i>
         <div class="M-traveler"><span>THE TRAVELER</span></div>

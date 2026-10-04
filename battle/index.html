@@ -652,6 +652,9 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 .hub.top { cursor: pointer; }
 /* MODES */
 .hub .H-stars { position: absolute; inset: 0; background: radial-gradient(1px 1px at 12% 22%, #fff, transparent), radial-gradient(1px 1px at 33% 64%, #fff, transparent), radial-gradient(1px 1px at 58% 12%, #fff, transparent), radial-gradient(1px 1px at 77% 82%, #fff, transparent), radial-gradient(1px 1px at 86% 34%, #fff, transparent), radial-gradient(ellipse at 40% 50%, rgba(80,110,190,0.25), transparent 60%); opacity: 0.8; }
+.hub .M-bg { position: absolute; inset: 0; }
+.hub .M-bg img { width: 100%; height: 100%; object-fit: cover; }
+.hub .M-bg + .H-stars { display: none; }
 .hub .H-modes > .H-ptitle { position: absolute; left: 2cqw; top: 2.4cqw; }
 .hub .M-orbit { position: absolute; left: 0; top: 0; width: 72%; height: 100%; }
 .hub .M-orbit .o1, .hub .M-orbit .o2 { position: absolute; left: 50%; top: 52%; border: 1px solid rgba(190,205,235,0.18); border-radius: 50%; transform: translate(-50%, -50%) rotate(-6deg); }
@@ -803,10 +806,10 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js?v=26"></script>
-<script src="pixelart.js?v=26"></script>
-<script src="sprites.js?v=26"></script>
-<script src="content.js?v=26"></script>
-<script src="game.js?v=26"></script>
+<script src="../manifest-trim.js?v=27"></script>
+<script src="pixelart.js?v=27"></script>
+<script src="sprites.js?v=27"></script>
+<script src="content.js?v=27"></script>
+<script src="game.js?v=27"></script>
 </body>
 </html>
