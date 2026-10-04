@@ -522,7 +522,7 @@
       const e = plugElement(gre, p.element);
       C.gre = { id: 'gre', name: gre.n, icon: gre.i, el: e, cost: { [costEl(e)]: 3 }, kind: 'atk', aoe: true, mult: 1.5 * (1 + p.stats.grenade / 100), brk: 14 };
     }
-    if (cls) C.cls = { id: 'cls', name: cls.n, icon: cls.i, cost: { light: 2 }, kind: 'class' };
+    if (cls) C.cls = { id: 'cls', name: cls.n, icon: cls.i, cost: { prism: 2 }, kind: 'class' };
     return C;
   }
 
@@ -1312,9 +1312,10 @@
     try { return buildPlayer(); } finally { S.activeJob = prev; }
   }
   // painted job-card backgrounds per element (art/ui/job_<element>.webp, 1024x1536 with the frame)
-  const EL_ICON = new Set(['solar', 'arc', 'void', 'stasis', 'strand']);   // art/ui/el_<element>.webp
+  const EL_ICON = new Set(['solar', 'arc', 'void', 'stasis', 'strand', 'prism']);   // art/ui/el_<element>.webp
   const icAttr = e => (EL_ICON.has(e) ? ` data-ic="${e}"` : '');
-  const JOB_BG = new Set(['solar', 'arc', 'void', 'stasis', 'strand']);
+  const elIcon = e => (EL_ICON.has(e) ? `<img class="el-ic" src="art/ui/el_${e}.webp" alt="">` : '');
+  const JOB_BG = new Set(['solar', 'arc', 'void', 'stasis', 'strand', 'prism']);
   const jobBg = e => (JOB_BG.has(e) ? ` art" style="--art:url(art/ui/job_${e}.webp);` : '');
   function renderJobs2(body) {
     const sorted = [...S.jobs].sort((a, b) => (b.r || 3) - (a.r || 3) || b.lv - a.lv);
@@ -1465,7 +1466,7 @@
    * Left: kinetic / energy / heavy weapons. Right: melee / grenade / class ability.
    * Bottom: HP bar, Super gauge (tap when full), guard ring (long press = spend elements for a defensive buff). */
   const BW = 480, BH = 270, BRS = 3;   // landscape 16:9 battlefield (rendered at 3x)
-  const ORB_ORDER = ['arc', 'solar', 'void', 'stasis', 'strand', 'light'];
+  const ORB_ORDER = ['arc', 'solar', 'void', 'stasis', 'strand', 'prism'];
 
   function costPips(cost) {
     return Object.entries(cost).flatMap(([e, n]) => Array.from({ length: n }, () => `<i style="background:${e === 'any' ? '#888' : Sprites.ELEMENT_COLORS[e]}"></i>`)).join('');
@@ -1485,7 +1486,7 @@
     }
     for (let i = 0; i < (cost.any || 0); i++) {
       const counts = {};
-      p.orbs.forEach(o => { counts[o] = (counts[o] || 0) + (o === 'light' ? 0.5 : 1); });
+      p.orbs.forEach(o => { counts[o] = (counts[o] || 0) + (o === 'prism' ? 0.5 : 1); });
       const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
       p.orbs.splice(p.orbs.indexOf(best), 1);
     }
@@ -1526,7 +1527,7 @@
           <div class="L-mods">
             ${st.waves.some(w => w.some(k => Content.BOSSES[k])) ? `<span>${iconSvg(ICON.skull)}ボス</span>` : ''}
             <span style="color:${facC}">${iconSvg(ICON.target)}${esc(facN)}</span>
-            ${weakSet.map(w => `<span style="color:${Sprites.ELEMENT_COLORS[w]}">${iconSvg(ICON.tri)}${ELEMENT_NAME[w]}弱点</span>`).join('')}
+            ${weakSet.map(w => `<span style="color:${Sprites.ELEMENT_COLORS[w]}">${elIcon(w) || iconSvg(ICON.tri)}${ELEMENT_NAME[w]}弱点</span>`).join('')}
             <span>BATTLE <b class="wv">1/${st.waves.length}</b></span>
           </div>
         </section>
@@ -1675,7 +1676,7 @@
       const pool = p.element === 'prism' ? ['arc', 'solar', 'void', 'stasis', 'strand'] : [p.element, p.element, p.element];
       const ee = DT_ELEMENT[p.items.ene?.def.dt];
       if (ee && ee !== 'kin') pool.push(ee, ee);
-      pool.push('light', 'light');
+      pool.push('prism', 'prism');
       for (let i = 0; i < n && p.orbs.length < MAX_ORBS; i++) p.orbs.push(pick(pool));
     }
     function addSuper(v) { p.superG = clamp(p.superG + v * p.superRate, 0, 100); }
@@ -2019,7 +2020,7 @@
         $('.L-bbrk').textContent = t.broken > 0 ? 'BREAK!' : `${Math.round((1 - t.bk / max) * 100)}%`;
         $('.m-cnt').textContent = t.broken > 0 ? 'B' : t.counter;
         const wc = Sprites.ELEMENT_COLORS[t.weak];
-        $('.m-tinfo').innerHTML = `<span style="color:${wc}"><i style="background:${wc}"></i>${ELEMENT_NAME[t.weak]}弱点</span>`
+        $('.m-tinfo').innerHTML = `<span style="color:${wc}">${elIcon(t.weak) || `<i style="background:${wc}"></i>`}${ELEMENT_NAME[t.weak]}弱点</span>`
           + (t.boss ? '<span class="bossc">ボス</span>' : '') + (t.broken > 0 ? '<span class="brkc">BREAK中 · ダメージ2倍</span>' : '');
       }
       // ability cards / weapons: lit cost segments, usable state
