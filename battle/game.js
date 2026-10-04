@@ -1549,7 +1549,7 @@
           <div class="L-grow"><span>HP</span><div class="L-bar php"><i class="m-hpbar-i"></i></div><em class="m-hpv"></em></div>
           <div class="L-grow"><span>SHIELD</span><div class="L-bar shd"><i class="L-shd"></i></div><em class="L-shdv"></em></div>
           <div class="L-wpns bt-left"></div>
-          <button type="button" class="m-super sp" aria-label="スーパー"><span class="L-spic">${p.abil.sup ? `<img src="${img(p.abil.sup.i)}" alt="">` : ''}</span><small>SUPER</small></button>
+          <button type="button" class="m-super sp" aria-label="スーパー" style="--c:${Sprites.ELEMENT_COLORS[p.element] || '#ff8a1e'}"><span class="L-spic">${p.abil.sup ? `<img src="${img(p.abil.sup.i)}" alt="">` : ''}</span><small>SUPER</small></button>
         </section>
         <section class="L-drive"><div class="L-dt">ELEMENT DRIVE</div><div class="L-gems">${drive}</div><div class="L-dh">タップで消費して防御</div></section>
         <section class="L-cards bt-right"></section>

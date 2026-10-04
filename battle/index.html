@@ -532,14 +532,19 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 .land .abtn.wpn:disabled { opacity: 0.55; }
 .land .abtn.wpn[data-id="kin"]:disabled { opacity: 0.8; }
 .land .abtn.wpn.empty { opacity: 0.35; }
-.land .m-super { grid-column: 2; grid-row: 2 / 5; align-self: center; justify-self: center; width: 7.6cqw; height: 7.6cqw; border-radius: 50%; border: 0; padding: 0; cursor: pointer; position: relative; background: conic-gradient(#ff8a1e var(--g, 0%), rgba(255,255,255,0.12) 0); display: grid; place-items: center; }
-.land .m-super::before { content: ''; position: absolute; inset: 0.55cqw; border-radius: 50%; background: radial-gradient(#2a1c10, #0d0a08); }
-.land .m-super .L-spic { position: relative; width: 4cqw; height: 4cqw; }
-.land .m-super .L-spic img { width: 100%; height: 100%; object-fit: contain; filter: grayscale(0.4) brightness(0.8); }
-.land .m-super small { position: absolute; bottom: -1.5cqw; left: 0; right: 0; text-align: center; font: 700 0.95cqw 'Rajdhani', 'Noto Sans JP', sans-serif; letter-spacing: 0.35cqw; color: #ffb04a; }
-.land .m-super.ready { box-shadow: 0 0 1.6cqw #ff8a1e; animation: spready 1s infinite alternate; }
-.land .m-super.ready .L-spic img { filter: none; }
-@keyframes spready { to { box-shadow: 0 0 2.6cqw #ffb04a; } }
+/* super ring: element-colored segmented gauge (--c = subclass element, --g = charge %) */
+.land .m-super { --cl: color-mix(in srgb, var(--c) 55%, #fff); grid-column: 2; grid-row: 2 / 5; align-self: center; justify-self: center; width: 7.6cqw; height: 7.6cqw; border-radius: 50%; border: 0; padding: 0; cursor: pointer; position: relative; display: grid; place-items: center;
+  background: conic-gradient(var(--c), var(--cl) var(--g, 0%), rgba(255,255,255,0.1) 0);
+  box-shadow: 0 0 1.2cqw color-mix(in srgb, var(--c) calc(var(--g, 0%) * 0.7), transparent), inset 0 0 0 1px rgba(255,255,255,0.12); transition: box-shadow 250ms; }
+.land .m-super::before { content: ''; position: absolute; inset: 0.6cqw; border-radius: 50%; border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--c) 32%, #0b0f1a), #07090f 72%); }
+.land .m-super::after { content: ''; position: absolute; inset: 0; border-radius: 50%; background: repeating-conic-gradient(transparent 0 13.4deg, #07090f 13.4deg 15deg);
+  -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 0.65cqw), #000 calc(100% - 0.6cqw)); mask: radial-gradient(closest-side, transparent calc(100% - 0.65cqw), #000 calc(100% - 0.6cqw)); pointer-events: none; }
+.land .m-super .L-spic { position: relative; z-index: 1; width: 4cqw; height: 4cqw; }
+.land .m-super .L-spic img { width: 100%; height: 100%; object-fit: contain; opacity: 0.55; filter: grayscale(0.5) drop-shadow(0 0 0.4cqw var(--c)); transition: opacity 250ms, filter 250ms; }
+.land .m-super small { position: absolute; bottom: -1.5cqw; left: 0; right: 0; text-align: center; font: 700 0.95cqw 'Rajdhani', 'Noto Sans JP', sans-serif; letter-spacing: 0.35cqw; color: var(--cl); text-shadow: 0 0 0.5cqw var(--c); }
+.land .m-super.ready { background: conic-gradient(var(--cl), var(--c), var(--cl), var(--c), var(--cl)); animation: spready 1s infinite alternate; }
+.land .m-super.ready .L-spic img { opacity: 1; filter: drop-shadow(0 0 0.6cqw var(--c)) brightness(1.15); }
+@keyframes spready { from { box-shadow: 0 0 1.4cqw var(--c), 0 0 0.4cqw var(--cl); } to { box-shadow: 0 0 2.8cqw var(--c), 0 0 0.8cqw var(--cl); } }
 /* element drive (bottom centre) */
 .land .L-drive { left: 41.2%; bottom: 2.4%; width: 15.4%; height: 27%; padding: 0.6cqw; display: flex; flex-direction: column; align-items: center; }
 .land .L-dt { font: 700 0.95cqw 'Rajdhani', 'Noto Sans JP', sans-serif; letter-spacing: 0.3cqw; color: #dfe5f0; }
@@ -828,10 +833,10 @@ img.el-ic { width: 1.25em; height: 1.25em; object-fit: contain; vertical-align: 
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js?v=33"></script>
-<script src="pixelart.js?v=33"></script>
-<script src="sprites.js?v=33"></script>
-<script src="content.js?v=33"></script>
-<script src="game.js?v=33"></script>
+<script src="../manifest-trim.js?v=34"></script>
+<script src="pixelart.js?v=34"></script>
+<script src="sprites.js?v=34"></script>
+<script src="content.js?v=34"></script>
+<script src="game.js?v=34"></script>
 </body>
 </html>
