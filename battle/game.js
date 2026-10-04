@@ -512,11 +512,11 @@
       <div class="hub-head">
         <span class="logo">D2 MOBIUS</span>
         <span class="grow"></span>
-        <span class="glimmer">${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}" alt="">` : '◆'}<span id="glim">${S.glimmer.toLocaleString()}</span></span>
+        <span class="glimmer" title="グリマー">${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}" alt="">` : '◆'}<span id="glim">${S.glimmer.toLocaleString()}</span></span>
       </div>
       <div class="tabs">
-        ${[['story', 'ストーリー'], ['job', 'ジョブ'], ['gear', '装備'], ['engram', 'エングラム'], ['menu', 'メニュー']]
-          .map(([k, n]) => `<button data-t="${k}" class="${k === hubTab ? 'active' : ''}">${n}</button>`).join('')}
+        ${[['story', 'ストーリー', 'auto_stories'], ['job', 'ジョブ', 'badge'], ['gear', '装備', 'shield'], ['engram', 'ガチャ', 'diamond'], ['menu', 'メニュー', 'more_horiz']]
+          .map(([k, n, ic]) => `<button data-t="${k}" class="${k === hubTab ? 'active' : ''}"><span class="ms">${ic}</span><span>${n}</span></button>`).join('')}
       </div>
       <div class="hub-body"></div>`;
     $$('.tabs button').forEach(b => b.onclick = () => renderHub(b.dataset.t));
@@ -955,7 +955,7 @@
       <div class="bt">
         <canvas id="bc" width="${BW * BRS}" height="${BH * BRS}"></canvas>
         <div class="bt-top">
-          <div class="bt-info"><span class="stg">${esc(st.no)} ${esc(st.name)}</span><span class="grow"></span><span class="wv"></span><button class="pbtn small flee">撤退</button></div>
+          <div class="bt-info"><span class="stg">${esc(st.no)} ${esc(st.name)}</span><span class="grow"></span><span class="wv"></span><button class="pbtn small flee"><span class="ms" style="font-size:16px">logout</span>撤退</button></div>
           <div class="bt-orbs"></div>
         </div>
         <div class="bt-side bt-left"></div>
@@ -978,10 +978,7 @@
     try { B.bg = act ? await Sprites.pixelatedBackground(img(act.img), 90, 160) : Sprites.gridBackground(90, 160); }
     catch { B.bg = Sprites.gridBackground(90, 160); }
     const vis = p.element === 'prism' ? 'prism' : p.element;
-    const armorPal = await Sprites.armorPalette({
-      head: p.items.head && img(p.items.head.def.i), chest: p.items.chest && img(p.items.chest.def.i), cls: p.items.cls && img(p.items.cls.def.i),
-    }).catch(() => ({}));
-    B.guardian = Sprites.guardianBack(p.cls, vis, armorPal);
+    B.guardian = Sprites.guardianBattle(p.cls, vis);
     const gc = p.ghost ? await Sprites.iconColor(img(p.ghost.i)) : null;
     B.ghostSprite = Sprites.ghostSprite(vis, gc ? { A: gc, a: Sprites.shade(gc, -50) } : null);
     B.weapons = {};
@@ -991,13 +988,15 @@
     }
 
     // ---- geometry ----
-    const PX = 104, PY = 292, PSC = 2.1; // player feet + sprite scale
+    // Player on the lower left facing right, enemies on the right (Mobius-style diagonal)
+    const PX = 58, PY = 286, PSC = 1.9; // player feet + sprite scale
     const pBox = () => {
       const s = B.guardian.sprite;
       const w = s.width * PSC, h = s.height * PSC;
-      const dodge = Math.sin(B.pDodge * Math.PI) * 26;
+      const dodge = Math.sin(B.pDodge * Math.PI) * 18;
       const dash = Math.sin(B.pDash * Math.PI);
-      return { x: PX - w / 2 - dodge, y: PY - h - dash * 40, w, h, cx: PX - dodge, dash };
+      const cx = PX - dodge + dash * 62;
+      return { x: cx - w / 2, y: PY - h - dash * 64, w, h, cx, dash };
     };
     const handPos = () => { const b = pBox(); const [hx, hy] = B.guardian.hand; return { x: b.x + hx * PSC, y: b.y + hy * PSC }; };
     const eBox = e => {
@@ -1036,13 +1035,15 @@
     function layoutEnemies() {
       const n = B.enemies.length;
       const boss = B.enemies.findIndex(e => e.boss);
-      const slots = n === 1 ? [[90, 172]] : n === 2 ? [[64, 176], [116, 170]] : [[52, 180], [90, 164], [128, 178]];
+      const slots = n === 1 ? [[120, 214]] : n === 2 ? [[104, 186], [140, 224]] : [[98, 176], [144, 198], [114, 236]];
       let order = B.enemies.map((e, i) => i);
       if (boss >= 0 && n === 3) { order = order.filter(i => i !== boss); order.splice(1, 0, boss); }
       order.forEach((ei, si) => {
         const e = B.enemies[ei];
         const [x, y] = slots[si];
-        e.x = x; e.y = y; e.depth = 0.82 + (y - 160) / 90;
+        e.x = x; e.y = y; e.depth = 0.82 + (y - 176) / 130;
+        const halfW = 34 * (e.holo ? 1.7 : 1.6) * e.scale * e.depth / 2;
+        e.x = Math.min(e.x, BW - halfW - 2); // keep the sprite inside the screen
       });
     }
     const alive = () => B.enemies.filter(e => e.hp > 0);
@@ -1074,7 +1075,8 @@
       e.hp = Math.max(0, e.hp - d);
       e.hitT = 1; e.kb = 1;
       const b = eBox(e);
-      popup(e.x + rand(12) - 6, b.y + 4, (crit ? '!' : '') + d.toLocaleString(), weak ? Sprites.ELEMENT_COLORS[elem] : '#ffffff', crit || opts.big);
+      if (crit) popup(e.x, b.y - 6, 'CRITICAL', '#bfe6ff');
+      popup(e.x + rand(12) - 6, b.y + 6, d.toLocaleString(), weak ? Sprites.ELEMENT_COLORS[elem] : '#ffffff', crit || opts.big);
       burst(e.x, b.cy, Sprites.ELEMENT_COLORS[elem] || '#fff', 7);
       if (e.broken <= 0 && brk > 0) {
         e.bk -= brk * (weak ? 3 : 1) * (elem === 'kin' ? 0.6 : 1) * p.brkMult;
@@ -1388,7 +1390,7 @@
     function frame(now) {
       if (!running) return;
       const dt = Math.min(50, now - last); last = now; B.time += dt;
-      draw(dt);
+      try { draw(dt); } catch (err) { console.error(err); g.setTransform(1, 0, 0, 1, 0, 0); }
       requestAnimationFrame(frame);
     }
     function bar(x, y, w, h, v, color, bgc = '#000') {
@@ -1397,12 +1399,12 @@
       g.fillStyle = color; g.fillRect(x, y, Math.max(0, w * v), h);
     }
     function txt(s, x, y, size, color, align = 'center') {
-      g.font = `${size}px DotGothic16, monospace`; g.textAlign = align;
+      g.font = `700 ${size}px Roboto, 'Noto Sans JP', sans-serif`; g.textAlign = align;
       g.fillStyle = '#000'; g.fillText(s, x + 0.6, y + 0.6);
       g.fillStyle = color; g.fillText(s, x, y);
     }
     function drawEnemy(e, i, dt) {
-      if (e.hp <= 0 && e.dieT <= 0) return;
+      if (!e.sprites || (e.hp <= 0 && e.dieT <= 0)) return; // sprites load asynchronously
       const b = eBox(e);
       e.atkT = Math.max(0, e.atkT - dt / 320);
       e.kb = Math.max(0, e.kb - dt / 220);
@@ -1479,7 +1481,7 @@
       }
       // Ghost
       const gy = b.y + 18 + Math.sin(B.time / 380) * 4;
-      g.drawImage(B.ghostSprite, b.x - 4, gy, 16, 16);
+      g.drawImage(B.ghostSprite, b.x - 2, gy - 14, 16, 16);
       // Defensive visuals
       const col = el => Sprites.ELEMENT_COLORS[el];
       if (p.shield) { g.strokeStyle = col('void'); g.globalAlpha = 0.6 + Math.sin(B.time / 200) * 0.2; g.lineWidth = 1.5; g.beginPath(); g.ellipse(b.cx, b.y + b.h / 2, b.w * 0.55, b.h * 0.55, 0, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
@@ -1511,8 +1513,8 @@
         } else if (f.type === 'wall') {
           const b = pBox();
           g.fillStyle = f.color; g.globalAlpha = 0.22 + Math.sin(B.time / 180) * 0.06;
-          g.fillRect(b.cx - 44, b.y - 12, 88, 36);
-          g.globalAlpha = 0.7; g.strokeStyle = f.color; g.strokeRect(b.cx - 44, b.y - 12, 88, 36);
+          g.fillRect(b.x + b.w - 4, b.y + 4, 12, b.h - 6);
+          g.globalAlpha = 0.7; g.strokeStyle = f.color; g.strokeRect(b.x + b.w - 4, b.y + 4, 12, b.h - 6);
         } else if (f.type === 'rift') {
           g.strokeStyle = f.color; g.globalAlpha = (1 - k) * 0.9; g.lineWidth = 2;
           g.beginPath(); g.ellipse(PX, PY, 40, 9, 0, 0, Math.PI * 2); g.stroke();
