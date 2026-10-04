@@ -1312,7 +1312,7 @@
     try { return buildPlayer(); } finally { S.activeJob = prev; }
   }
   // painted job-card backgrounds per element (art/ui/job_<element>.webp, 1024x1536 with the frame)
-  const JOB_BG = new Set(['solar']);
+  const JOB_BG = new Set(['solar', 'arc', 'void', 'stasis', 'strand']);
   const jobBg = e => (JOB_BG.has(e) ? ` art" style="--art:url(art/ui/job_${e}.webp);` : '');
   function renderJobs2(body) {
     const sorted = [...S.jobs].sort((a, b) => (b.r || 3) - (a.r || 3) || b.lv - a.lv);
