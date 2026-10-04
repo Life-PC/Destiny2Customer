@@ -301,8 +301,22 @@
     light:  { n: 'ゴーストの光', d: 'HPを回復' },
   };
 
+  /* ---------- Outfit art (one-piece pose images) ----------
+   * Register drawn outfits here. Folder battle/art/outfits/<dir>/ holds idle.png (required) and
+   * shoot.png / melee.png / super.png (optional, fall back to idle). Match by class + series name,
+   * and exotic name (or '*' for any exotic). Outfits without art use the part rig in their colors. */
+  const OUTFIT_ART = [
+    // { cl: 1, set: '雷雲', ex: '*', dir: 'hunter_raiun' },
+  ];
+  function outfitArt(o, set, ex) {
+    const a = OUTFIT_ART.find(x => x.cl === o.cl && x.set === set?.n && (x.ex === '*' || x.ex === ex?.n));
+    if (!a) return null;
+    const base = `art/outfits/${a.dir}/`;
+    return { idle: base + 'idle.png', shoot: base + 'shoot.png', melee: base + 'melee.png', super: base + 'super.png' };
+  }
+
   root.Content = {
     DT_ELEMENT, ELEMENT_NAME, CLASS_NAME, ENEMIES, BOSSES, enemyDef, STAGES, PROLOGUE, STORY,
-    SET_EFFECTS, setEffectFor, suggestJobName, jobNameFor, GHOST_PERKS, ghostPerksFor, GUARD,
+    SET_EFFECTS, setEffectFor, suggestJobName, jobNameFor, GHOST_PERKS, ghostPerksFor, GUARD, OUTFIT_ART, outfitArt,
   };
 })(window);

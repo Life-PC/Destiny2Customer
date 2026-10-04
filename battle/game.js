@@ -236,6 +236,10 @@
   }
   function rollDropItem(st) {
     const kind = st.drop.pool === 'exotic' ? (Math.random() < 0.5 ? 'weapon' : 'armor') : st.drop.pool;
+    if (kind === 'armor') {   // armor drops are outfits for the current class; rarity rises with the stage
+      const o = rollOutfit(activeJob().cl, st.drop.pool === 'exotic' ? 5 : st.lv > 4 ? rollRarity(4) : rollRarity());
+      return o ? { outfit: o } : null;
+    }
     const tt = weightedTier(dropTable(st).w);
     const slot = pick(kind === 'weapon' ? ['kin', 'ene', 'pow'] : ARMOR_SLOTS);
     const pool = (Data.pool[slot] || []).filter(it => it.tt === tt);
@@ -267,12 +271,7 @@
     // Starter armor: one full legendary armor series per class (jobs of any class can be pulled)
     const starterGhost = pick(Data.ghosts.filter(gh => gh.tt === 5)) || Data.ghosts[0];
     if (starterGhost) S.ghost = addItem(starterGhost, 'start').id;
-    for (const c of [0, 1, 2]) {
-      for (const piece of starterArmor(c)) {
-        const inv = addItem(piece, 'start');
-        S.loadout[c][SLOT_OF_BUCKET[piece.bk]] = inv.id;
-      }
-    }
+    ensureOutfits();
     save();
   }
   // Weapons are shared by all classes (as in Destiny 2); armor is per class
@@ -320,6 +319,81 @@
     return { def, inv: addItem(def, src), dup: false };
   }
 
+  /* ===================== outfits (armor) =====================
+   * An OUTFIT = class + one legendary armor series (all 5 slots) + one exotic armor piece, drawn as ONE
+   * character. Rolled like jobs (fixed name per combination) and replaces the 5 armor slots.
+   * The series effect is always active; stats scale with the outfit rarity (★3-5) and limit breaks. */
+  const OUTFIT_STAT = { 3: 150, 4: 185, 5: 220 };   // total armor stats before rarity / limit break
+  const setCache = {};
+  function outfitSets(cls) {
+    if (setCache[cls]) return setCache[cls];
+    const out = [];
+    for (const [hash, set] of Object.entries(Data.sets)) {
+      const bySlot = {};
+      for (const h of set.items) {
+        const d = Data.byHash.get(h);
+        if (!d || d.it !== 2 || d.tt !== 5 || (d.cl !== cls && d.cl !== 3)) continue;
+        const slot = SLOT_OF_BUCKET[d.bk];
+        if (slot && !bySlot[slot]) bySlot[slot] = d;
+      }
+      if (ARMOR_SLOTS.every(sl => bySlot[sl])) out.push(hash);
+    }
+    return (setCache[cls] = out);
+  }
+  const outfitExotics = cls => ARMOR_SLOTS.flatMap(sl => (Data.pool[sl] || []).filter(d => d.tt === 6 && d.cl === cls));
+  function rollOutfit(cls = rand(3), r = rollRarity()) {
+    const set = pick(outfitSets(cls)), ex = pick(outfitExotics(cls));
+    if (!set || !ex) return null;
+    const keys = Object.keys(STAT), w = keys.map(() => Math.random() ** 2 + 0.15), sum = w.reduce((a, b) => a + b, 0);
+    const st = Object.fromEntries(keys.map((k, i) => [k, Math.round(OUTFIT_STAT[r] * w[i] / sum)]));
+    return { id: 'o' + (S.nextId++), cl: cls, set, ex: ex.h, r, lb: 0, st };
+  }
+  const outfitKey = o => [o.cl, o.set, o.ex].join(':');
+  // A duplicate combination limit-breaks the owned outfit (and keeps the higher rarity)
+  function grantOutfit(o) {
+    S.outfits ||= [];
+    const dup = S.outfits.find(x => outfitKey(x) === outfitKey(o));
+    if (!dup) { S.outfits.push(o); return { outfit: o, dup: false }; }
+    if (o.r > dup.r) { dup.r = o.r; dup.st = o.st; }
+    dup.lb = Math.min(MAX_LB, (dup.lb || 0) + 1);
+    return { outfit: dup, dup: true };
+  }
+  const outfitById = id => (S.outfits || []).find(o => o.id === id);
+  const equippedOutfit = cls => outfitById(S.outfit?.[cls]);
+  function outfitInfo(o) {
+    const set = Data.sets[o.set], ex = Data.byHash.get(o.ex);
+    const pieces = {};
+    for (const h of set?.items || []) {
+      const d = Data.byHash.get(h);
+      if (d && d.it === 2 && (d.cl === o.cl || d.cl === 3)) { const sl = SLOT_OF_BUCKET[d.bk]; if (sl && !pieces[sl]) pieces[sl] = d; }
+    }
+    if (ex) pieces[SLOT_OF_BUCKET[ex.bk]] = ex;   // the exotic takes its slot
+    return {
+      set, ex, pieces, effect: set ? Content.setEffectFor(o.set, set.n) : null,
+      name: `${set?.n || '?'}・${ex?.n || '?'}`,
+      stars: (o.r || 3) + ((o.lb || 0) >= MAX_LB ? 1 : 0),
+      mult: RARITY[o.r || 3].mult * (1 + 0.05 * (o.lb || 0)),
+      art: Content.outfitArt ? Content.outfitArt(o, set, ex) : null,
+    };
+  }
+  // Starter outfits (★3) for every class; also migrates saves from the 5-slot armor era
+  function ensureOutfits() {
+    S.outfits ||= []; S.outfit ||= {};
+    for (const c of [0, 1, 2]) {
+      if (equippedOutfit(c)) continue;
+      const o = rollOutfit(c, 3);
+      if (o) { S.outfits.push(o); S.outfit[c] = o.id; }
+    }
+  }
+  const outfitUrls = oi => Object.fromEntries(ARMOR_SLOTS.map(sl => [sl, oi.pieces[sl]?.i ? img(oi.pieces[sl].i) : null]));
+  // Guardian sprite in the outfit's colors (async: the colors come from the API armor icons)
+  async function outfitSprite(o, element) {
+    const oi = outfitInfo(o);
+    let pal = {};
+    try { pal = await Sprites.guardianSlotPal(o.cl, outfitUrls(oi)); } catch { }
+    return Sprites.guardianSprite(o.cl, element, pal);
+  }
+
   /* ===================== player build ===================== */
   function equippedItems(cls) {
     const lo = S.loadout[cls] || {};
@@ -363,9 +437,10 @@
     const job = activeJob();
     const cls = job.cl;
     const items = equippedItems(cls);
-    const stats = armorTotals(items);
-    const set = setStatus(items, cls);
-    const fx = set?.active ? set.effect.id : null;
+    const outfit = equippedOutfit(cls), oi = outfit ? outfitInfo(outfit) : null;
+    const stats = Object.fromEntries(Object.keys(STAT).map(k => [k, Math.round((outfit?.st?.[k] || 0) * (oi?.mult || 1))]));
+    const set = oi?.effect ? { name: oi.set.n, effect: oi.effect, active: true } : null;
+    const fx = set ? set.effect.id : null;
     const lv = job.lv || 1;
     const sub = Data.byHash.get(job.sub);
     const element = subElement(sub);
@@ -375,7 +450,7 @@
     const pb = panelBonus(job);
     const aw = 1 + pb.awaken / 100;
     const p = {
-      cls, job, items, stats, set, fx, lv, sub, element, ghost, gp,
+      cls, job, items, outfit, oi, stats, set, fx, lv, sub, element, ghost, gp,
       maxHp: Math.round(((1000 + stats.hp * 8 + lv * 30) * RARITY[job.r || 3].mult * (gp.has('hp') ? 1.08 : 1) + (fx === 'hp' ? 100 : 0) + pb.hp) * aw),
       atk: Math.round(((100 + lv * 6) * RARITY[job.r || 3].mult + pb.atk) * aw),
       elBoost: pb.el / 100,
@@ -530,6 +605,7 @@
     }
     loadSave();
     if (!S) return renderTitle();
+    if (!S.outfits) { ensureOutfits(); save(); }
     renderHub('story');
   }
 
@@ -608,6 +684,16 @@
       ${opts.badge ? `<span class="badge">${opts.badge}</span>` : ''}
     </div>`;
   }
+  // Outfit card: the exotic's API icon with the series chest piece as a badge
+  function outfitCardHtml(o, extra = '', attrs = '', badge = '') {
+    const oi = outfitInfo(o);
+    const others = Object.values(oi.pieces).filter(d => d !== oi.ex);
+    const sub = others.find(d => SLOT_OF_BUCKET[d.bk] === 'chest') || others[0];
+    return `<div class="icard outfit tier${oi.stars} ${extra}" ${attrs}>
+      <img src="${img(oi.ex?.i)}" alt="${esc(oi.name)}">${sub ? `<img class="sub" src="${img(sub.i)}" alt="">` : ''}
+      ${/sm/.test(extra) ? '' : `<span class="tl">${CLASS_NAME[o.cl]}</span>`}
+      <span class="st">★${oi.stars}${o.lb ? `<small>+${o.lb}</small>` : ''}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</div>`;
+  }
   function jobCardHtml(j, extra = '') {
     const e = subElement(Data.byHash.get(j.sub));
     return `<div class="icard job tier${(j.r || 3)} ${extra}" data-job="${j.id}"><canvas data-cls="${j.cl}" data-el="${e}"></canvas>
@@ -680,7 +766,7 @@
     body.appendChild(btns);
     body.appendChild(el(`<div class="jabil">${['sup', 'cls', 'mel', 'gre'].map(k => { const p = Data.plugs.get(view[k]); const kind = ABIL_KINDS.find(x => x.k === k); return p ? `<span><img src="${img(p.i)}" alt="">${kind.n}<b>${esc(p.n)}</b></span>` : ''; }).join('')}</div>`));
     const hero = el(`<div class="mh-stage"></div>`);
-    hero.appendChild(bigSprite(view.cl, e));
+    hero.appendChild(outfitHero(equippedOutfit(view.cl), view.cl, e));
     body.appendChild(hero);
   }
   function abilityRow(job, k) {
@@ -766,11 +852,10 @@
     const job = activeJob();
     const cls = job.cl;
     const items = equippedItems(cls);
-    const stats = armorTotals(items);
-    const set = setStatus(items, cls);
+    const p = buildPlayer();
+    const stats = p.stats, set = p.set, outfit = p.outfit, oi = p.oi;
     const sub = Data.byHash.get(job.sub);
     const e = subElement(sub);
-    const p = buildPlayer();
     const ginv = invById(S.ghost), gdef = ginv && Data.ghostByHash.get(ginv.h);
     const sup = Data.plugs.get(job.sup);
     const deck = el(`<section class="deck">
@@ -781,15 +866,16 @@
         ${['kin', 'ene', 'pow'].map(s => items[s] ? itemCard(items[s].def, items[s].inv, { label: SLOT_NAME[s], attrs: `data-slot="${s}"` }) : `<div class="icard empty" data-slot="${s}">+</div>`).join('')}
         <div class="icard abil">${sup ? `<img src="${img(sup.i)}" alt="${esc(sup.n)}">` : ''}</div>
       </div>
-      <div class="arow"><span class="dlab">防具</span>
-        ${ARMOR_SLOTS.map(s => items[s] ? itemCard(items[s].def, items[s].inv, { cls: 'sm', attrs: `data-slot="${s}"` }) : `<div class="icard sm empty" data-slot="${s}">+</div>`).join('')}
+      <div class="arow"><span class="dlab">衣装</span>
+        ${outfit ? outfitCardHtml(outfit, 'sm', 'data-slot="outfit"') : '<div class="icard sm empty" data-slot="outfit">+</div>'}
+        <span class="oname">${oi ? esc(oi.name) : '衣装なし'}</span>
         <span class="dlab">ゴースト</span>
         ${gdef ? itemCard(gdef, ginv, { cls: 'sm', attrs: 'data-slot="ghost"' }) : '<div class="icard sm empty" data-slot="ghost">+</div>'}
       </div>
-      <div class="dfoot">${set ? `シリーズ「${esc(set.name)}」${set.count}/${set.need} · ${esc(set.effect.n)} ${set.active ? '<b class="ok">発動中</b>' : '(未発動)'}` : 'シリーズ防具(レジェンダリー)をフルセットで特殊効果'}</div>
+      <div class="dfoot">${set ? `シリーズ効果「${esc(set.effect.n)}」<b class="ok">発動中</b> · エキゾチック: ${esc(oi.ex?.n || '-')}` : '衣装を装備するとシリーズ効果が発動'}</div>
     </section>`);
     paintJobCanvases(deck);
-    $$('[data-slot]', deck).forEach(c => c.onclick = () => c.dataset.slot === 'ghost' ? openGhostPicker() : openPicker(cls, c.dataset.slot));
+    $$('[data-slot]', deck).forEach(c => c.onclick = () => c.dataset.slot === 'ghost' ? openGhostPicker() : c.dataset.slot === 'outfit' ? openOutfitPicker(cls) : openPicker(cls, c.dataset.slot));
     deck.querySelector('.dj').onclick = () => renderHub('job');
     body.appendChild(deck);
     const spb = el(`<div class="mh-row end"><button type="button" class="mbtn teal">スキルパネル</button></div>`);
@@ -805,7 +891,7 @@
         <dt>クリティカル</dt><dd class="n">${Math.round(p.crit * 100)}%</dd>
         <dt>アーマー</dt><dd class="n sm">${Object.keys(STAT).map(k => `${STAT_LABEL[k]}${stats[k]}`).join(' ')}</dd>
       </dl></div>`);
-    stage.appendChild(bigSprite(cls, e));
+    stage.appendChild(outfitHero(outfit, cls, e));
     body.appendChild(stage);
     const imp = el(`<div class="mh-row"><button type="button" class="mbtn blue">D2 の装備を取り込む</button><a href="../" class="muted" style="font-size:12px">ARMORY でログイン →</a></div>`);
     imp.querySelector('button').onclick = async ev => {
@@ -829,6 +915,55 @@
     m.querySelector('.x').onclick = () => m.remove();
     m.querySelector('.un').onclick = () => { if (isWeaponSlot(slot)) equipWeapon(slot, null); else delete S.loadout[cls][slot]; save(); m.remove(); renderHub('gear'); };
     $$('[data-i]', m).forEach(c => c.onclick = () => openCardDetail(list, +c.dataset.i, x => { m.remove(); equip(x); }));
+    document.body.appendChild(m);
+  }
+  // Hero sprite in the outfit's colors (filled in once the icon colors are known)
+  function outfitHero(o, cls, element) {
+    const c = bigSprite(cls, element);
+    if (o) outfitSprite(o, element).then(sp => { const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height); g.imageSmoothingEnabled = false; g.drawImage(sp, 0, 0, c.width, c.height); });
+    return c;
+  }
+  function openOutfitPicker(cls) {
+    const list = (S.outfits || []).filter(o => o.cl === cls)
+      .sort((a, b) => outfitInfo(b).stars - outfitInfo(a).stars || outfitInfo(a).name.localeCompare(outfitInfo(b).name, 'ja'));
+    const m = el(`<div class="modal mob-modal"><div class="panel">
+      <div class="row"><b>衣装 (${CLASS_NAME[cls]})</b><span class="muted" style="font-size:12px">所持 ${list.length}</span><span class="grow"></span><button type="button" class="mbtn x">BACK</button></div>
+      <div class="picker2">${list.map((o, i) => outfitCardHtml(o, o.id === S.outfit[cls] ? 'sel' : '', `data-i="${i}"`)).join('')}</div></div></div>`);
+    m.querySelector('.x').onclick = () => m.remove();
+    $$('[data-i]', m).forEach(c => c.onclick = () => openOutfitDetail(list, +c.dataset.i, o => { S.outfit[cls] = o.id; save(); m.remove(); renderHub('gear'); }));
+    document.body.appendChild(m);
+  }
+  // Outfit detail: preview in its colors, the 5 pieces (API icons), series effect, exotic, stats
+  function openOutfitDetail(list, index, onEquip) {
+    let i = index;
+    const m = el(`<div class="cdetail"></div>`);
+    const draw = () => {
+      const o = list[i], oi = outfitInfo(o);
+      m.innerHTML = `
+        <div class="ccard tier${oi.stars}">
+          <div class="ch"><img src="${img(oi.ex?.i)}" alt=""><b>${esc(oi.name)}</b><span class="cs">${'★'.repeat(oi.stars)}</span></div>
+          <div class="ca outfit-prev"></div>
+          <div class="cb">
+            <div class="ct">${CLASS_NAME[o.cl]} · 衣装${o.lb ? ` · 限界突破 ${o.lb}/${MAX_LB}` : ''}</div>
+            <div class="opieces">${ARMOR_SLOTS.map(sl => oi.pieces[sl] ? `<span class="${oi.pieces[sl] === oi.ex ? 'isex' : ''}"><img src="${img(oi.pieces[sl].i)}" alt=""><small>${SLOT_NAME[sl]}</small></span>` : '').join('')}</div>
+            ${oi.effect ? `<div class="cd set">シリーズ「${esc(oi.set.n)}」: ${esc(oi.effect.n)}</div>` : ''}
+            ${oi.ex ? `<div class="cd">エキゾチック「${esc(oi.ex.n)}」${oi.ex.fx ? ' — ' + esc(oi.ex.fx) : ''}</div>` : ''}
+            <div class="cgrid">${Object.keys(STAT).map(k => `<span>${esc(STAT_LABEL[k])}<b>${Math.round((o.st?.[k] || 0) * oi.mult)}</b></span>`).join('')}</div>
+          </div>
+        </div>
+        <div class="cfoot">${onEquip ? '<button type="button" class="mbtn teal eq">装備する</button>' : ''}</div>
+        <button type="button" class="side back">BACK</button>
+        <button type="button" class="side prev" ${i === 0 ? 'disabled' : ''}>Prev Card</button>
+        <button type="button" class="side next" ${i === list.length - 1 ? 'disabled' : ''}>Next Card</button>`;
+      const prev = m.querySelector('.outfit-prev');
+      if (oi.art?.idle) prev.innerHTML = `<img src="${oi.art.idle}" alt="${esc(oi.name)}" style="object-fit:contain">`;
+      else prev.appendChild(outfitHero(o, o.cl, 'light'));
+      m.querySelector('.back').onclick = () => m.remove();
+      m.querySelector('.prev').onclick = () => { if (i > 0) { i--; draw(); } };
+      m.querySelector('.next').onclick = () => { if (i < list.length - 1) { i++; draw(); } };
+      m.querySelector('.eq')?.addEventListener('click', () => { m.remove(); onEquip(list[i]); });
+    };
+    draw();
     document.body.appendChild(m);
   }
   function openGhostPicker() {
@@ -888,7 +1023,7 @@
   /* ----- GACHA (glimmer only, no real money): job / armor / weapon / ghost ----- */
   const GACHA = {
     job:    { n: 'ジョブ', cost: 500, col: ['#c8901e', '#ffd36a'], desc: 'サブクラス・近接・グレネード・クラススキル・スーパーの組み合わせがランダムなジョブ。クラスも混合。', rates: '★5: 10% / ★4: 30% / ★3: 60% · 10回で★4以上1つ確定' },
-    armor:  { n: '防具', cost: 300, col: ['#2f6fc0', '#7ab0f0'], desc: '全クラスの防具。レアリティが高いほどステータスが高い。同じ防具は限界突破。', rates: '★5: 3% / ★4: 17% / ★3: 35% / ★2: 45% · 10回で★3以上1つ確定' },
+    armor:  { n: '衣装', cost: 400, col: ['#2f6fc0', '#7ab0f0'], desc: '防具シリーズ×エキゾチック防具の組み合わせがランダムな衣装(クラス混合)。シリーズ効果つき。同じ組み合わせは限界突破。', rates: '★5: 10% / ★4: 30% / ★3: 60% · 10回で★4以上1つ確定' },
     weapon: { n: '武器', cost: 300, col: ['#7a3fc8', '#b07af0'], desc: 'キネティック・エネルギー・パワー武器(全クラス共通)。同じ武器は限界突破で威力アップ。', rates: '★5: 3% / ★4: 17% / ★3: 35% / ★2: 45% · 10回で★3以上1つ確定' },
     ghost:  { n: 'ゴースト', cost: 300, col: ['#2f9a92', '#8ae8e0'], desc: 'ゴーストの外殻。外殻ごとに固定のパッシブ効果(エキゾチックは2つ)。', rates: '★5: 15% / ★4: 85%' },
   };
@@ -927,6 +1062,11 @@
           results.push({ job: grantJob(rollJob(rand(3), r)), r });
           continue;
         }
+        if (gachaTab === 'armor') {
+          const o = rollOutfit(rand(3), last ? rollRarity(4) : rollRarity());
+          if (o) results.push(grantOutfit(o));
+          continue;
+        }
         const it = rollGearItem(gachaTab, false, last ? 4 : 0);
         if (it) results.push(grantItem(it, 'gacha'));
       }
@@ -950,6 +1090,7 @@
           const j = r.job.job;
           return `<div class="gcell" style="animation-delay:${i * 90}ms">${jobCardHtml(j)}${r.job.dup ? `<span class="gb dup">EXP+${r.job.xp}</span>` : '<span class="gb new">NEW!</span>'}</div>`;
         }
+        if (r.outfit) return `<div class="gcell" style="animation-delay:${i * 90}ms">${outfitCardHtml(r.outfit)}${r.dup ? `<span class="gb dup">限界突破${r.outfit.lb}</span>` : '<span class="gb new">NEW!</span>'}</div>`;
         return `<div class="gcell" style="animation-delay:${i * 90}ms">${itemCard(r.def, r.inv)}${r.dup ? `<span class="gb dup">限界突破${r.inv.lb}</span>` : '<span class="gb new">NEW!</span>'}</div>`;
       }).join('')}</div>
       <div class="gbonus"><i style="background:${Sprites.ELEMENT_COLORS[bonus.el]}"></i><b>${SHARD_NAME[bonus.el]}の欠片 ×${bonus.n}</b><span>解読のおまけが手に入りました!</span></div>
@@ -1040,7 +1181,7 @@
           <div class="glimmer" style="justify-content:center">${Data.glimmerIcon ? `<img src="${img(Data.glimmerIcon)}">` : ''}+${r.glimmer.toLocaleString()} ${first ? '(初回ボーナス込み)' : ''}</div>
           <div class="muted" style="font-size:12px;margin-top:4px">ジョブ経験値 +${r.xp}${r.levelUp ? ` · <span style="color:var(--good)">LEVEL UP! Lv.${r.lv}</span>` : ''}</div>
           <div class="shards" style="justify-content:center;margin-top:8px">${Object.entries(r.shards || {}).map(([k, n]) => `<span><i style="background:${Sprites.ELEMENT_COLORS[k]}"></i>${SHARD_NAME[k]} +${n}</span>`).join('')}</div>
-          ${r.drops.length ? `<div style="margin-top:8px">ドロップ</div><div class="drops2">${r.drops.map(d => itemCard(d.def, d.inv, { badge: d.dup ? '限界突破' : 'NEW!' })).join('')}</div><div style="font-size:12px">${r.drops.map(d => esc(d.def.n)).join(' / ')}</div>` : ''}`
+          ${r.drops.length ? `<div style="margin-top:8px">ドロップ</div><div class="drops2">${r.drops.map(d => d.outfit ? outfitCardHtml(d.outfit, '', '', d.dup ? '限界突破' : 'NEW!') : itemCard(d.def, d.inv, { badge: d.dup ? '限界突破' : 'NEW!' })).join('')}</div><div style="font-size:12px">${r.drops.map(d => esc(d.outfit ? outfitInfo(d.outfit).name : d.def.n)).join(' / ')}</div>` : ''}`
           : '<div class="muted">光が尽きた……装備やジョブを見直して再挑戦しよう。</div>'}
         <button class="pbtn primary" style="margin-top:14px;width:100%">OK</button></div></div>`);
       m.querySelector('button').onclick = () => { m.remove(); resolve(); };
@@ -1132,8 +1273,17 @@
     catch { B.bg = Sprites.gridBackground(90, 160); }
     const vis = p.element === 'prism' ? 'prism' : p.element;
     // armor look per slot from the equipped armor's API icons (head / arms / chest / legs / class item)
-    try { B.slotPal = await Sprites.guardianSlotPal(p.cls, Object.fromEntries(ARMOR_SLOTS.map(s => [s, p.items[s]?.def?.i ? img(p.items[s].def.i) : null]))); }
+    try { B.slotPal = p.oi ? await Sprites.guardianSlotPal(p.cls, outfitUrls(p.oi)) : {}; }
     catch { B.slotPal = {}; }
+    // One-piece outfit art (pose images) when the outfit has it; otherwise the part rig in the outfit's colors
+    B.poseArt = null;
+    if (p.oi?.art) {
+      try {
+        const load = u => (u ? Sprites.loadImage(u, false) : Promise.resolve(null));
+        const [idle, shoot, melee, sup] = await Promise.all(['idle', 'shoot', 'melee', 'super'].map(k => load(p.oi.art[k])));
+        if (idle) B.poseArt = { idle, shoot: shoot || idle, melee: melee || idle, super: sup || idle };
+      } catch { B.poseArt = null; }
+    }
     B.guardian = Sprites.guardianRig(p.cls, vis, B.slotPal); // part-based rig (animated)
     const gc = p.ghost ? await Sprites.iconColor(img(p.ghost.i)) : null;
     B.ghostSprite = Sprites.ghostSprite(vis, gc ? { A: gc, a: Sprites.shade(gc, -50) } : null);
@@ -1476,7 +1626,8 @@
       const drops = [];
       if (st.drop && (Math.random() < st.drop.chance || (st.drop.first && first))) {
         const it = rollDropItem(st);
-        if (it) drops.push(grantItem(it, 'drop'));
+        if (it?.outfit) drops.push(grantOutfit(it.outfit));
+        else if (it) drops.push(grantItem(it, 'drop'));
       }
       // Element shards (skill panel currency): each defeated enemy drops its weakness element
       S.shards ||= {};
@@ -1746,7 +1897,20 @@
       const wsp = B.weapons[B.held] || B.weapons.kin;
       const weapon = wsp ? { sprite: wsp.sprite, gx: wsp.gx, gy: wsp.gy, scale: 0.85, flash: B.pAtkT > 0.5 ? B.pAtkT : 0 } : null;
       const ox = PX - 33 * PSC, oy = PY - 62 * PSC;
-      if (!(B.pHitT > 0 && Math.floor(B.time / 60) % 2)) B.handPt = Sprites.drawRig(g, B.guardian, ox, oy, PSC, pose, weapon);
+      const blink = B.pHitT > 0 && Math.floor(B.time / 60) % 2;
+      if (B.poseArt) {
+        // one-piece outfit art: the pose image for the current motion, whole body moved (feet on the ground)
+        const mt = B.motion?.type;
+        const im = mt === 'shoot' ? B.poseArt.shoot : mt === 'punch' || mt === 'throw' ? B.poseArt.melee : mt === 'super' ? B.poseArt.super : B.poseArt.idle;
+        const h = 64 * PSC * 1.05, w = im.width * h / im.height;
+        const fx = b.cx + pose.dx * PSC, fy = PY + pose.dy * PSC;
+        if (!blink) {
+          g.save(); g.translate(fx, fy); g.rotate(pose.lean); g.scale(1, 1 + pose.breath * 0.004);
+          g.imageSmoothingEnabled = true; g.drawImage(im, -w / 2, -h, w, h); g.imageSmoothingEnabled = false;
+          g.restore();
+        }
+        B.handPt = { x: fx + w * 0.38, y: fy - h * 0.58 };
+      } else if (!blink) B.handPt = Sprites.drawRig(g, B.guardian, ox, oy, PSC, pose, weapon);
       // Ghost
       const gy = b.y + 18 + Math.sin(B.time / 380) * 4;
       g.drawImage(B.ghostSprite, b.x - 2, gy - 14, 16, 16);

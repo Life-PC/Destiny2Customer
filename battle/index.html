@@ -324,6 +324,16 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 .icard.empty { display: flex; align-items: center; justify-content: center; background: #1c202a; border: 2px dashed #3a4258; font: 800 22px 'Cinzel', serif; color: #6a7288; }
 .icard.sel { outline: 3px solid #fff; outline-offset: 1px; } .icard.act::after { content: 'USE'; position: absolute; right: 3px; top: 2px; font: 700 9px 'Rajdhani', sans-serif; color: #8de0a0; text-shadow: 0 1px 2px #000; }
 .icard.sm { width: 40px; flex-shrink: 0; }
+.icard.outfit .sub { position: absolute; right: 2px; top: 2px; width: 38%; height: auto; border-radius: 3px; box-shadow: 0 0 0 1px #000a; }
+.icard.outfit.sm .sub { width: 44%; }
+.icard.outfit.sel { outline: 2px solid #ffd36a; outline-offset: 1px; }
+.deck .arow .oname { flex: 1 1 120px; min-width: 0; font-size: 11px; line-height: 1.3; color: #e8ecf4; overflow: hidden; text-overflow: ellipsis; }
+.opieces { display: flex; gap: 6px; margin: 6px 0; flex-wrap: wrap; }
+.opieces span { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; color: #b8c0d4; }
+.opieces img { width: 38px; height: 38px; border-radius: 4px; box-shadow: 0 0 0 1px #0008; }
+.opieces .isex img { box-shadow: 0 0 0 2px #f2c94c; }
+.ca.outfit-prev { display: flex; align-items: center; justify-content: center; background: radial-gradient(#3a4660, #1b2030); }
+.ca.outfit-prev canvas { width: auto; height: 92%; image-rendering: pixelated; }
 
 /* quests */
 .mh-chapter { font: 700 13px 'Noto Sans JP', sans-serif; color: #ffd36a; margin: 4px 2px 8px; }
@@ -440,10 +450,10 @@ input.txt { background: var(--md-surface-c-highest); border: 0; border-bottom: 1
 <body>
 <div id="app"><div class="loading">初期化中...</div></div>
 <div id="toast"></div>
-<script src="../manifest-trim.js?v=18"></script>
-<script src="pixelart.js?v=18"></script>
-<script src="sprites.js?v=18"></script>
-<script src="content.js?v=18"></script>
-<script src="game.js?v=18"></script>
+<script src="../manifest-trim.js?v=19"></script>
+<script src="pixelart.js?v=19"></script>
+<script src="sprites.js?v=19"></script>
+<script src="content.js?v=19"></script>
+<script src="game.js?v=19"></script>
 </body>
 </html>
