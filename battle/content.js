@@ -301,9 +301,35 @@
     light:  { n: 'ゴーストの光', d: 'HPを回復' },
   };
 
+  /* ---------- Super pose patterns ----------
+   * Each super uses one of 7 body poses (3 frames each, art/templates/pose_super.png) and a Light
+   * weapon / energy that the game draws in the super's element color: [pattern, prop]. */
+  const SUPER_POSE = {
+    'カオスの混沌': ['beam', 'beam'], 'ストームトランス': ['beam', 'lightning'],
+    'ノヴァボム: 大変動': ['orb', 'orb'], 'ノヴァボム: ボルテックス': ['orb', 'orb'], 'ニードルストーム': ['orb', 'needles'],
+    'ゴールデンガン: デッドショット': ['gun', 'gun'], 'ゴールデンガン: マークスマン': ['gun', 'gun'],
+    'シャドウショット: メビウスの矢筒': ['gun', 'bow'], 'シャドウショット: 落罠': ['gun', 'bow'],
+    'アークポール': ['blade', 'staff'], '亡霊の刃': ['blade', 'blades'], 'ブレードフューリー': ['blade', 'sword'], 'デイブレイク': ['blade', 'sword'],
+    'モールバーニング': ['blade', 'hammer'], 'センティネルシールド': ['blade', 'shield'], 'シルクストライク': ['blade', 'staff'], '冬の怒り': ['blade', 'staff'],
+    'サンハンマー': ['throw', 'hammer'], 'トワイライトアーセナル': ['throw', 'axe'], '沈黙と悲鳴': ['throw', 'sickle'],
+    '嵐の集積': ['throw', 'staff'], '嵐の鋭刃': ['throw', 'dagger'], '刃の雨': ['throw', 'knives'],
+    'ハボックフィスト': ['slam', 'fists'], '氷河の揺れ': ['slam', 'fists'], 'サンダークラッシュ': ['slam', 'fists'],
+    '輝く泉': ['field', 'well'], 'ドーン・ウォード': ['field', 'bubble'], '炎のさえずり': ['field', 'aura'], 'ノヴァワープ': ['field', 'implode'],
+  };
+  function superPose(name) {
+    if (SUPER_POSE[name]) return SUPER_POSE[name];
+    const n = name || '';   // unknown (future) supers: guess from the name
+    if (/ガン|ショット|弓/.test(n)) return ['gun', 'gun'];
+    if (/ボム|球/.test(n)) return ['orb', 'orb'];
+    if (/フィスト|揺れ|クラッシュ/.test(n)) return ['slam', 'fists'];
+    if (/刃|ブレード|剣|ポール|杖/.test(n)) return ['blade', 'sword'];
+    return ['field', 'aura'];
+  }
+
   /* ---------- Outfit art (one-piece pose frames) ----------
-   * Register drawn outfits here. battle/art/outfits/<dir>/ holds {idle,shoot,melee,super}_{1,2,3}.png
-   * + meta.json, made from a pose sheet by tools/import-poses.py (template: art/templates/pose_sheet.png).
+   * Register drawn outfits here. battle/art/outfits/<dir>/ holds idle/shoot/melee_{1,2,3}.png (base sheet),
+   * <pattern>_{1,2,3}.png for the 7 super patterns (super sheet) and meta.json — made by tools/import-poses.py
+   * from sheets drawn on art/templates/pose_base.png and pose_super.png.
    * Match by class + series name, and exotic name (or '*' for any exotic).
    * Outfits without art use the part rig in their colors. */
   const OUTFIT_ART = [
@@ -314,11 +340,11 @@
     if (!a) return null;
     const base = `art/outfits/${a.dir}/`;
     const frames = pose => [1, 2, 3].map(i => `${base}${pose}_${i}.png`);
-    return { base, meta: base + 'meta.json', preview: base + 'idle_1.png', idle: frames('idle'), shoot: frames('shoot'), melee: frames('melee'), super: frames('super') };
+    return { base, meta: base + 'meta.json', preview: base + 'idle_1.png', idle: frames('idle'), shoot: frames('shoot'), melee: frames('melee'), superFrames: frames };
   }
 
   root.Content = {
     DT_ELEMENT, ELEMENT_NAME, CLASS_NAME, ENEMIES, BOSSES, enemyDef, STAGES, PROLOGUE, STORY,
-    SET_EFFECTS, setEffectFor, suggestJobName, jobNameFor, GHOST_PERKS, ghostPerksFor, GUARD, OUTFIT_ART, outfitArt,
+    SET_EFFECTS, setEffectFor, suggestJobName, jobNameFor, GHOST_PERKS, ghostPerksFor, GUARD, OUTFIT_ART, outfitArt, SUPER_POSE, superPose,
   };
 })(window);

@@ -1275,6 +1275,8 @@
     // armor look per slot from the equipped armor's API icons (head / arms / chest / legs / class item)
     try { B.slotPal = p.oi ? await Sprites.guardianSlotPal(p.cls, outfitUrls(p.oi)) : {}; }
     catch { B.slotPal = {}; }
+    // Super pose pattern + Light weapon / energy prop (drawn by the game in the super's element color)
+    B.superPose = Content.superPose(p.abil.sup?.n);
     // One-piece outfit art (pose images) when the outfit has it; otherwise the part rig in the outfit's colors
     // 3 frames per pose (idle loops; actions play through once), all cropped with the same box (meta.json)
     B.poseArt = null;
@@ -1284,11 +1286,16 @@
         const meta = await fetch(art.meta).then(r => (r.ok ? r.json() : null)).catch(() => null);
         const load = u => Sprites.loadImage(u, false).catch(() => null);
         const poses = {};
-        for (const k of ['idle', 'shoot', 'melee', 'super']) poses[k] = (await Promise.all(art[k].map(load))).filter(Boolean);
+        for (const k of ['idle', 'shoot', 'melee']) poses[k] = (await Promise.all(art[k].map(load))).filter(Boolean);
+        // super: the job's super pattern row of the super sheet (falls back to the melee frames)
+        poses.super = (await Promise.all(art.superFrames(B.superPose[0]).map(load))).filter(Boolean);
         if (poses.idle.length) {
-          for (const k of ['shoot', 'melee', 'super']) if (!poses[k].length) poses[k] = poses.idle;
+          for (const k of ['shoot', 'melee']) if (!poses[k].length) poses[k] = poses.idle;
           const f0 = poses.idle[0];
-          B.poseArt = { ...poses, meta: meta || { w: f0.width, h: f0.height, footY: f0.height, cx: f0.width / 2, figH: f0.height } };
+          const base = meta?.base || meta || { w: f0.width, h: f0.height, footY: f0.height, cx: f0.width / 2, figH: f0.height };
+          const sup = poses.super.length && meta?.super ? { ...meta.super, figH: base.figH } : null;
+          if (!sup) poses.super = poses.melee;
+          B.poseArt = { ...poses, meta: base, superMeta: sup || base };
         }
       } catch { B.poseArt = null; }
     }
@@ -1524,15 +1531,17 @@
       p.superG = 0;
       banner(s?.n || 'SUPER');
       B.superFx = { t: 0, dur: 2100, color, name: s?.n || 'SUPER', icon: s };
+      // cut-in first, then the super pose: charge → release (impact) → hold
+      await sleep(850);
       setMotion('super');
-      await sleep(1250);
+      await sleep(600);
       const ts = alive();
       for (const t of ts) { const b = eBox(t); ringFx(t.x, b.cy, color, 70, 700); burst(t.x, b.cy, color, 30, 5); }
       B.shake = 14; B.flash = 1;
       let total = 0;
       for (const t of ts) total += hit(t, p.atk * 6.5 * (1 + p.stats.super / 150), p.element, 40, { big: true });
       log(`スーパー「${s?.n || ''}」! 合計 ${total.toLocaleString()} ダメージ`);
-      await sleep(850);
+      await sleep(1000);
     }
     // Guard ring: spend all orbs of the most plentiful element (max 8) → defensive buff by element
     async function guard() {
@@ -1908,7 +1917,8 @@
       const blink = B.pHitT > 0 && Math.floor(B.time / 60) % 2;
       if (B.poseArt) {
         // one-piece outfit art: the pose image for the current motion, whole body moved (feet on the ground)
-        const A = B.poseArt, M = A.meta, mt = B.motion?.type;
+        const A = B.poseArt, mt = B.motion?.type;
+        const M = mt === 'super' ? A.superMeta : A.meta;
         const set = mt === 'shoot' ? A.shoot : mt === 'punch' || mt === 'throw' ? A.melee : mt === 'super' ? A.super : null;
         // action: frames 1→2→3 across the motion; idle: 1-2-3-2 loop
         const fi = set ? Math.min(set.length - 1, Math.floor((B.motion.t / B.motion.dur) * set.length)) : [0, 1, 2, 1][Math.floor(B.time / 260) % 4] % A.idle.length;
@@ -1922,7 +1932,20 @@
           g.restore();
         }
         B.handPt = { x: fx + M.figH * sc * 0.32, y: fy - M.figH * sc * 0.6 };
-      } else if (!blink) B.handPt = Sprites.drawRig(g, B.guardian, ox, oy, PSC, pose, weapon);
+        if (mt === 'super' && A.superMeta.anchors) {
+          const an = A.superMeta.anchors[`${B.superPose[0]}_${fi + 1}`];
+          if (an) {
+            const P = ([x, y]) => [fx + (x - M.cx) * sc, fy + (y - M.footY) * sc];
+            drawSuperProp(fi, B.motion.t / B.motion.dur, P(an.hand), an.ang, P(an.far), [fx, fy], sc);
+          }
+        }
+      } else if (!blink) {
+        B.handPt = Sprites.drawRig(g, B.guardian, ox, oy, PSC, pose, weapon);
+        if (B.motion?.type === 'super' && B.handPt) {   // rig: the prop in the near hand, pointing at the enemies
+          const k = B.motion.t / B.motion.dur, fi = Math.min(2, Math.floor(k * 3));
+          drawSuperProp(fi, k, [B.handPt.x, B.handPt.y], fi === 0 && B.superPose[0] !== 'slam' ? 150 : 90, [B.handPt.x - 14, B.handPt.y + 4], [b.cx, PY], 0.35);
+        }
+      }
       // Ghost
       const gy = b.y + 18 + Math.sin(B.time / 380) * 4;
       g.drawImage(B.ghostSprite, b.x - 2, gy - 14, 16, 16);
@@ -1931,6 +1954,99 @@
       if (p.shield) { g.strokeStyle = col('void'); g.globalAlpha = 0.6 + Math.sin(B.time / 200) * 0.2; g.lineWidth = 1.5; g.beginPath(); g.ellipse(b.cx, b.y + b.h / 2, b.w * 0.55, b.h * 0.55, 0, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1; }
       if (p.buffs.armor) { g.fillStyle = (p.buffs.weave ? col('strand') : col('solar')) + '28'; g.fillRect(b.x + 6, b.y + 4, b.w - 12, b.h - 8); }
       if (p.buffs.evadeUp && Math.random() < 0.3) burst(b.cx + rand(40) - 20, b.y + rand(b.h), col('arc'), 1, 1);
+    }
+    /* Super prop: the summoned Light weapon / beam / orb / shockwave drawn over the super pose frames.
+     * fi = frame (0..2), k = super progress 0..1, hand = near hand, ang = forearm angle (deg from straight
+     * down, + = toward the enemies), far = other hand, foot = feet, sc = art scale (sizes follow the figure). */
+    function drawSuperProp(fi, k, hand, ang, far, foot, sc) {
+      const [pat, prop] = B.superPose;
+      const col = Sprites.ELEMENT_COLORS[p.element] || '#f3ecd0';
+      const a = ang * Math.PI / 180, ux = Math.sin(a), uy = Math.cos(a);   // forearm direction
+      const S = Math.max(0.6, sc / 0.35);                                    // size factor (≈1 for the rig)
+      const [hx, hy] = hand, t = B.time;
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.shadowColor = col; g.shadowBlur = 8;
+      g.strokeStyle = col; g.fillStyle = col; g.lineCap = 'round'; g.lineJoin = 'round';
+      const line = (x1, y1, x2, y2, w) => { g.lineWidth = w; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
+      const dot = (x, y, r, al = 1) => { g.globalAlpha = al; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1; };
+      const along = d => [hx + ux * d * S, hy + uy * d * S];
+      if (pat === 'beam') {
+        if (fi === 0) dot(hx, hy, (3 + k * 12) * S);
+        else if (prop === 'lightning') {
+          g.lineWidth = 2 * S; g.beginPath(); g.moveTo(hx, hy);
+          for (let i = 1; i <= 8; i++) { const [x, y] = along(i * 14); g.lineTo(x + (Math.random() - 0.5) * 10 * S, y + (Math.random() - 0.5) * 10 * S); }
+          g.stroke(); dot(hx, hy, 4 * S);
+        } else {
+          const [x2, y2] = along(240);
+          line(hx, hy, x2, y2, (7 + Math.sin(t / 40) * 2) * S);
+          g.strokeStyle = '#ffffff'; line(hx, hy, x2, y2, 2.5 * S); dot(hx, hy, 6 * S);
+        }
+      } else if (pat === 'orb') {
+        const mx = (hx + far[0]) / 2, my = (hy + far[1]) / 2;
+        if (prop === 'needles') {
+          for (let i = 0; i < 6; i++) { const d = fi * 24 + i * 7, [x, y] = along(d); line(x, y - 4 * S + i * 1.5 * S, x + ux * 9 * S, y + uy * 9 * S - 4 * S + i * 1.5 * S, 1.5 * S); }
+        } else if (fi < 2) {
+          const r = (fi === 0 ? 4 + k * 18 : 9) * S, [x, y] = fi === 0 ? [mx, my] : along(18);
+          dot(x, y, r); g.fillStyle = '#ffffff'; dot(x, y, r * 0.45, 0.8);
+        }
+      } else if (pat === 'gun') {
+        if (prop === 'bow') {
+          const px = -uy, py = ux;   // perpendicular
+          g.lineWidth = 2.5 * S; g.beginPath();
+          g.moveTo(hx + px * 13 * S, hy + py * 13 * S); g.quadraticCurveTo(hx + ux * 8 * S, hy + uy * 8 * S, hx - px * 13 * S, hy - py * 13 * S); g.stroke();
+          g.globalAlpha = 0.7; line(hx + px * 13 * S, hy + py * 13 * S, hx - px * 13 * S, hy - py * 13 * S, 1); g.globalAlpha = 1;
+          if (fi >= 1) { const [x2, y2] = along(fi === 2 ? 60 : 16); line(hx - ux * 6 * S, hy - uy * 6 * S, x2, y2, 2 * S); }
+        } else {
+          const [x2, y2] = along(15);
+          line(hx, hy, x2, y2, 5 * S); line(hx, hy, hx + uy * 5 * S, hy - ux * -5 * S, 3 * S);
+          if (fi === 2) { const [mx2, my2] = along(22); dot(mx2, my2, 6 * S, 0.9); }
+        }
+      } else if (pat === 'blade') {
+        if (prop === 'shield') {
+          const [x, y] = along(8); g.lineWidth = 2.5 * S; g.beginPath();
+          for (let i = 0; i <= 6; i++) { const q = i / 6 * Math.PI * 2 + Math.PI / 6; g.lineTo(x + Math.cos(q) * 12 * S, y + Math.sin(q) * 14 * S); }
+          g.globalAlpha = 0.35; g.fill(); g.globalAlpha = 1; g.stroke();
+        } else if (prop === 'staff') {
+          const [x1, y1] = along(-18), [x2, y2] = along(30); line(x1, y1, x2, y2, 3 * S);
+        } else if (prop === 'hammer') {
+          const [x2, y2] = along(26); line(hx, hy, x2, y2, 3 * S);
+          const px = -uy, py = ux; line(x2 - px * 8 * S, y2 - py * 8 * S, x2 + px * 8 * S, y2 + py * 8 * S, 8 * S);
+        } else {   // sword / blades
+          const [x2, y2] = along(prop === 'blades' ? 18 : 30); line(hx, hy, x2, y2, 4 * S);
+          g.strokeStyle = '#ffffff'; line(hx, hy, x2, y2, 1.5 * S);
+          if (prop === 'blades') { g.strokeStyle = col; line(far[0], far[1], far[0] + ux * 16 * S, far[1] + uy * 16 * S, 3 * S); }
+        }
+        if (fi === 1) { g.globalAlpha = 0.35; g.lineWidth = 3 * S; g.beginPath(); g.arc(foot[0], hy, 34 * S, -1.4, 0.6); g.stroke(); g.globalAlpha = 1; }   // swing arc
+      } else if (pat === 'throw') {
+        const d = fi === 0 ? 0 : fi === 1 ? 30 : 80, [x, y] = along(d), spin = t / 60;
+        const n = prop === 'knives' ? 3 : prop === 'axe' ? 1 : 1;
+        for (let i = 0; i < n; i++) {
+          const ox = x + (n > 1 ? (i - 1) * 6 * S : 0), oy = y + (n > 1 ? (i - 1) * -5 * S : 0);
+          g.save(); g.translate(ox, oy); g.rotate(fi ? spin : a + Math.PI);
+          if (prop === 'hammer' || prop === 'axe') { line(0, -10 * S, 0, 8 * S, 2.5 * S); line(-6 * S, -10 * S, 6 * S, -10 * S, (prop === 'axe' ? 4 : 7) * S); }
+          else if (prop === 'sickle') { g.lineWidth = 3 * S; g.beginPath(); g.arc(0, 0, 9 * S, 0.3, 3.6); g.stroke(); }
+          else if (prop === 'staff') line(0, -18 * S, 0, 18 * S, 3 * S);
+          else line(0, -8 * S, 0, 8 * S, 2.5 * S);   // dagger / knives
+          g.restore();
+        }
+      } else if (pat === 'slam') {
+        dot(hx, hy, 6 * S, 0.9); dot(far[0], far[1], 6 * S, 0.9);
+        if (fi === 2) { const r = (20 + (k - 0.66) * 300) * S; g.lineWidth = 4 * S; g.globalAlpha = Math.max(0, 1 - (k - 0.66) * 3); g.beginPath(); g.ellipse(foot[0], foot[1], r, r * 0.25, 0, 0, Math.PI * 2); g.stroke(); }
+      } else {   // field
+        if (prop === 'well' && fi >= 1) {
+          const sx = foot[0] + 14 * S; line(sx, foot[1] + 2, sx, foot[1] - 34 * S, 4 * S); line(sx - 8 * S, foot[1] - 24 * S, sx + 8 * S, foot[1] - 24 * S, 3 * S);
+          g.globalAlpha = 0.25; g.beginPath(); g.ellipse(foot[0], foot[1], 70 * S, 16 * S, 0, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+        } else if (prop === 'bubble' && fi >= 1) {
+          g.globalAlpha = 0.3; g.beginPath(); g.ellipse(foot[0], foot[1], 60 * S, 70 * S, 0, Math.PI, 0); g.fill(); g.globalAlpha = 0.8; g.lineWidth = 2 * S; g.stroke();
+        } else if (prop === 'implode') {
+          const r = (fi === 0 ? 50 - k * 60 : 10 + (k - 0.33) * 150) * S; g.lineWidth = 3 * S; g.beginPath(); g.arc(foot[0], foot[1] - 40 * S, Math.max(4, r), 0, Math.PI * 2); g.stroke();
+        } else {   // aura (and the charge frame of every field super)
+          for (let i = 0; i < 8; i++) { const q = t / 300 + i * 0.8; dot(foot[0] + Math.cos(q) * 22 * S, foot[1] - 30 * S - ((t / 6 + i * 13) % 50) * S, 2.5 * S, 0.8); }
+          dot(hx, hy, 4 * S); dot(far[0], far[1], 4 * S);
+        }
+      }
+      g.restore();
     }
     function drawFx(dt) {
       B.fx = B.fx.filter(f => (f.t += dt) < f.dur);
@@ -2011,10 +2127,17 @@
         g.translate(BW / 2, BH * 0.42); g.rotate(-0.18);
         g.fillStyle = s.color; g.fillRect(-BW, -34, BW * 2, 68);
         g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(-BW, -30, BW * 2, 60);
-        const fs = Sprites.guardianSprite(p.cls, p.element === 'prism' ? 'prism' : p.element, B.slotPal);
-        g.imageSmoothingEnabled = false;
         const cx = -BW * 0.9 + slide * BW * 0.6 + (t / 1150) * 12;
-        g.drawImage(fs, cx, -48, 96, 96);
+        if (B.poseArt) {   // outfit art: its idle frame, cropped to the upper body
+          const im = B.poseArt.idle[0], M = B.poseArt.meta, sc = 150 / M.figH;
+          g.save(); g.beginPath(); g.rect(-BW, -30, BW * 2, 60); g.clip();
+          g.imageSmoothingEnabled = true; g.drawImage(im, cx + 48 - M.cx * sc, -26 - (M.footY - M.figH) * sc, M.w * sc, M.h * sc);
+          g.restore();
+        } else {
+          const fs = Sprites.guardianSprite(p.cls, p.element === 'prism' ? 'prism' : p.element, B.slotPal);
+          g.imageSmoothingEnabled = false;
+          g.drawImage(fs, cx, -48, 96, 96);
+        }
         g.restore();
         g.save();
         g.globalAlpha = fadeOut;
