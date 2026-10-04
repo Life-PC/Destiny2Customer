@@ -1959,16 +1959,18 @@
     const ABL = { mel: '近接', gre: 'グレネード', cls: 'クラス' };
     const short = t => { const x = String(t || '').replace(/\s+/g, ' '); return x.length > 34 ? x.slice(0, 33) + '…' : x; };
     const elName = e => (e === 'any' || !e ? '' : ELEMENT_NAME[e] || '');
+    const CARD_BG = ['solar', 'arc', 'void', 'stasis', 'strand', 'prism', 'kin'];   // art/ui/card_<el>.webp (tools/make-card-bgs.py)
+    const cardBg = e => `--bg:url(art/ui/card_${CARD_BG.includes(e) ? e : 'kin'}.webp)`;
     const cardHtml = (k, c, plug) => {
       const cost = c?.cost ? Object.values(c.cost).reduce((a2, b2) => a2 + b2, 0) : 0;
       const el2 = c?.el || p.element;
-      return `<button type="button" class="abtn skl L-card" data-id="${k}" style="--c:${Sprites.ELEMENT_COLORS[el2] || '#ccc'}" aria-label="${esc(c?.name || '')}">
+      return `<button type="button" class="abtn skl L-card" data-id="${k}" style="--c:${Sprites.ELEMENT_COLORS[el2] || '#ccc'};${cardBg(el2)}" aria-label="${esc(c?.name || '')}">
         <span class="L-gemc">${cost}</span><span class="ic">${c?.icon ? `<img src="${img(c.icon)}" alt="">` : ''}</span>
         <b>${esc(c?.name || '-')}</b><small>${esc(short(plug?.d))}</small><span class="segs">${c ? segs(c) : ''}</span>
         <em>${esc(ABL[k])}${elName(el2) ? ' · ' + elName(el2) : ''}</em></button>`;
     };
     const sup = p.abil.sup;
-    $('.bt-right').innerHTML = `<button type="button" class="L-card spcard" style="--c:${Sprites.ELEMENT_COLORS[p.element] || '#ffd36a'}" aria-label="スーパー">
+    $('.bt-right').innerHTML = `<button type="button" class="L-card spcard" style="--c:${Sprites.ELEMENT_COLORS[p.element] || '#ffd36a'};${cardBg(p.element)}" aria-label="スーパー">
         <span class="L-gemc">S</span><span class="ic">${sup ? `<img src="${img(sup.i)}" alt="">` : ''}</span>
         <b>${esc(sup?.n || 'スーパー')}</b><small>${esc(short(sup?.d))}</small><span class="L-spg"><i></i></span><em>スーパー · ${esc(ELEMENT_NAME[p.element] || '')}</em></button>`
       + ['gre', 'mel', 'cls'].map(k => C[k] ? cardHtml(k, C[k], p.abil[k]) : '<div class="L-card empty"></div>').join('');
