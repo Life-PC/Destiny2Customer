@@ -1637,6 +1637,15 @@
     const ringFx = (x, y, color, r = 30, dur = 450) => B.fx.push({ type: 'ring', x, y, color, r, t: 0, dur });
     const lob = (x0, y0, x1, y1, color, dur = 420) => B.fx.push({ type: 'lob', x0, y0, x1, y1, color, t: 0, dur });
 
+    const ART_CACHE = new Map();
+    function enemyArt(key) {
+      if (!ART_CACHE.has(key)) ART_CACHE.set(key, new Promise(res => {
+        const im = new Image(); im.pix = true;
+        im.onload = () => res(im); im.onerror = () => res(null);
+        im.src = `art/enemies/${key}.png`;
+      }));
+      return ART_CACHE.get(key);
+    }
     async function loadWave() {
       B.enemies = st.waves[B.wave].map(k => makeEnemy(k, st.lv));
       if (p.fx === 'delay') B.enemies.forEach(e => e.counter++);
@@ -1646,7 +1655,9 @@
           try { const s = await Sprites.pixelatedHologram(img(e.holo), 32); e.sprites = [s, s, s]; }
           catch { e.sprites = [0, 1, 2].map(gl => Sprites.enemySprite('servitor', 'fallen', e.weak, null, gl)); }
         } else {
-          e.sprites = [0, 1, 2].map(gl => Sprites.enemySprite(e.tpl, e.fac, e.weak, e.pal, gl));
+          // painted pixel sprite (art/enemies/<key>.png, from tools/gen-enemies.js) when it exists; procedural art otherwise
+          const im = await enemyArt(e.key);
+          e.sprites = im ? [im, im, im] : [0, 1, 2].map(gl => Sprites.enemySprite(e.tpl, e.fac, e.weak, e.pal, gl));
         }
       }));
       B.target = Math.max(0, B.enemies.findIndex(e => e.boss));
@@ -2133,11 +2144,11 @@
       const glow = Math.floor((Math.sin(B.time / 260 + e.phase) + 1) * 1.5) % 3;
       const spr = e.sprites[glow] || e.sprites[0];
       const sink = e.hp <= 0 ? (1 - e.dieT) * 10 : 0;
-      if (spr.illus) {
-        // smooth illustration: whole-image breathing + top sway (row slicing would band when downscaled)
+      if (spr.illus || spr.pix) {
+        // smooth illustration / painted pixel sprite: whole-image breathing + top sway (row slicing would band when downscaled)
         const br = 1 + Math.sin(B.time * 0.0028 + e.phase) * 0.025;
         const sw = Math.sin(B.time * 0.0021 + e.phase) * 1.1 / h;
-        g.save(); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+        g.save(); g.imageSmoothingEnabled = !!spr.illus; g.imageSmoothingQuality = 'high';
         g.transform(1, 0, -sw, br, e.x, feetY + sink);
         g.drawImage(spr, -w / 2, -h, w, h);
         g.restore();

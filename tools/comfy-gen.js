@@ -11,7 +11,9 @@
  *     xl       DreamShaper XL Lightning, 6 steps, no LoRA          (fast fantasy / game art)
  *     xlpixel  DreamShaper XL Lightning + Pixel Art XL LoRA        (detailed pixel art)
  *     jugg     Juggernaut XL v9, 30 steps, no LoRA                 (painterly / realistic, slow)
- *   [--sampler dpmpp_2m] [--scheduler karras] [--lora 0 = no LoRA] */
+ *   [--sampler dpmpp_2m] [--scheduler karras] [--lora 0 = no LoRA]
+ *   Likeness from reference images (IP-Adapter, SDXL presets only; needs ComfyUI_IPAdapter_plus):
+ *     --ipref <img> [--ipref <img2> ...] [--ipw 0.8] [--ipend 0.9]   the refs' look is copied into the result */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -43,6 +45,8 @@ function comfyKey() {
   return null;
 }
 const init = opt('init', null);
+const iprefs = args.flatMap((a, i) => (a === '--ipref' ? [args[i + 1]] : []));
+const ipW = +opt('ipw', 0.8), ipEnd = +opt('ipend', 0.9);
 const INPUT_DIR = opt('inputDir', 'D:/Comfy-Desktop/ComfyUI-Shared/input');
 let initName = null;
 if (init) {
@@ -63,6 +67,7 @@ const gptWf = () => {
   return w;
 };
 const MC = loraW ? '2' : '1';   // model / clip source
+const MODEL = iprefs.length ? 'ipa' : MC;   // the sampler takes the IP-Adapter-patched model when refs are given
 const wf = engine === 'gpt' ? gptWf() : {
   1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: ckpt } },
   // --lora 0 → no LoRA node (an SD1.5 LoRA cannot be applied to an SDXL checkpoint)
@@ -70,9 +75,17 @@ const wf = engine === 'gpt' ? gptWf() : {
   3: { class_type: 'CLIPTextEncode', inputs: { clip: [MC, 1], text: prompt } },
   4: { class_type: 'CLIPTextEncode', inputs: { clip: [MC, 1], text: neg } },
   5: { class_type: 'EmptyLatentImage', inputs: { width: W, height: H, batch_size: 1 } },
-  6: { class_type: 'KSampler', inputs: { model: [MC, 0], positive: ['3', 0], negative: ['4', 0], latent_image: init ? ['10', 0] : ['5', 0],
+  6: { class_type: 'KSampler', inputs: { model: [MODEL, 0], positive: ['3', 0], negative: ['4', 0], latent_image: init ? ['10', 0] : ['5', 0],
     seed, steps: +opt('steps', 26), cfg: +opt('cfg', 7), sampler_name: opt('sampler', 'dpmpp_2m'), scheduler: opt('scheduler', 'karras'), denoise: init ? +opt('denoise', 0.6) : 1 } },
   7: { class_type: 'VAEDecode', inputs: { samples: ['6', 0], vae: ['1', 2] } },
+  ...(iprefs.length ? (() => {
+    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MC, 0], preset: 'PLUS (high strength)' } } };
+    iprefs.forEach((f, i) => { w['ipr' + i] = { class_type: 'LoadImage', inputs: { image: toInput(f) } }; });
+    let img = ['ipr0', 0];
+    for (let i = 1; i < iprefs.length; i++) { w['ipb' + i] = { class_type: 'ImageBatch', inputs: { image1: img, image2: ['ipr' + i, 0] } }; img = ['ipb' + i, 0]; }
+    w.ipa = { class_type: 'IPAdapter', inputs: { model: ['ipl', 0], ipadapter: ['ipl', 1], image: img, weight: ipW, start_at: 0, end_at: ipEnd, weight_type: 'standard' } };
+    return w;
+  })() : {}),
   ...(init ? {
     9: { class_type: 'LoadImage', inputs: { image: initName } },
     10: { class_type: 'VAEEncode', inputs: { pixels: ['9', 0], vae: ['1', 2] } },

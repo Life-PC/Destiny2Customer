@@ -1,3 +1,8 @@
 .claude/
 api-images/
 .env
+
+# reference imagery for AI generation (not ours to redistribute)
+art/refs/
+art/tests/
+art/gen/
