@@ -1616,7 +1616,8 @@
     const setMotion = type => { B.motion = { type, t: 0, dur: PixelArt.MOTIONS[type].dur }; };
     const eBox = e => {
       const s = e.sprites?.[0];
-      const sc = (e.holo ? 2.0 : 2.2 * 34 / (s?.width || 34)) * e.scale * e.depth; // same on-screen size for 32px/48px art
+      // same on-screen size for 32px/48px art; painted sprites (any aspect) are sized by height instead
+      const sc = (e.holo ? 2.0 : s?.pix ? 76 / s.height : 2.2 * 34 / (s?.width || 34)) * e.scale * e.depth;
       const w = (s?.width || 32) * sc, h = (s?.height || 32) * sc;
       const bob = Sprites.FLOATING.has(e.tpl) || e.holo ? Math.sin(B.time / 500 + e.phase) * 3 - 6 : 0;
       return { x: e.x - w / 2, y: e.y - h + bob, w, h, cy: e.y - h / 2 + bob };
@@ -1637,12 +1638,13 @@
     const ringFx = (x, y, color, r = 30, dur = 450) => B.fx.push({ type: 'ring', x, y, color, r, t: 0, dur });
     const lob = (x0, y0, x1, y1, color, dur = 420) => B.fx.push({ type: 'lob', x0, y0, x1, y1, color, t: 0, dur });
 
+    const ENEMY_ART_V = 1;   // bump when sprites in art/enemies are regenerated
     const ART_CACHE = new Map();
     function enemyArt(key) {
       if (!ART_CACHE.has(key)) ART_CACHE.set(key, new Promise(res => {
         const im = new Image(); im.pix = true;
         im.onload = () => res(im); im.onerror = () => res(null);
-        im.src = `art/enemies/${key}.png`;
+        im.src = `art/enemies/${key}.png?v=${ENEMY_ART_V}`;
       }));
       return ART_CACHE.get(key);
     }

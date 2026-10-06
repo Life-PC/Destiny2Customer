@@ -22,7 +22,7 @@ from pixelize import vote_downscale, finish  # noqa: E402
 ROOT = os.path.join(os.path.dirname(__file__), '..')
 
 
-def remove_gray_background(rgb, tol=46, step=12):
+def remove_gray_background(rgb, tol=46, step=12, dropgray=False, dropcyan=False, open_px=0):
     h, w, _ = rgb.shape
     c = rgb.astype(int)
     border = np.concatenate([c[0], c[-1], c[:, 0], c[:, -1]])
@@ -44,15 +44,21 @@ def remove_gray_background(rgb, tol=46, step=12):
             if 0 <= nx < w and 0 <= ny < h and not mask[ny, nx] and cand[ny, nx] and np.abs(c[ny, nx] - c[y, x]).sum() < step:
                 mask[ny, nx] = True; q.append((nx, ny))
     # soft ground shadow under the feet: darker gray, unsaturated, touching the background → background
-    shadow = (~mask) & (sat < 18) & (c.mean(axis=2) < bg.mean()) & (c.mean(axis=2) > bg.mean() - 70)
+    # ground shadow: a flat gray blob at the feet. Only look in the lowest quarter of the subject so gray metal
+    # or black (Taken) bodies higher up are never eaten.
+    ys0 = np.nonzero(~mask)[0]
+    low = np.zeros((h, w), bool); low[int(ys0.min() + (ys0.max() - ys0.min()) * 0.72):] = True
+    shadow = (~mask) & low & (sat < 16) & (lum < bg.mean() + 8) & (lum > bg.mean() - 60)
     grow = mask.copy()
-    for _ in range(40):
+    for _ in range(400):
         nb = np.zeros_like(grow)
         nb[1:] |= grow[:-1]; nb[:-1] |= grow[1:]; nb[:, 1:] |= grow[:, :-1]; nb[:, :-1] |= grow[:, 1:]
         new = nb & shadow & ~grow
         if not new.any(): break
         grow |= new
     mask |= grow
+    if dropgray: mask |= (sat < 22) & (lum > 60) & (lum < 215)          # subject has no mid-gray parts (bronze machines)
+    if dropcyan: mask |= (c[..., 2] - c[..., 0] > 40) & (c[..., 1] - c[..., 0] > 20) & (lum < 190)   # stray cyan guide lines
     # enclosed flat gray patches (between the legs, under an arm): unsaturated, near the card tone, no texture
     from scipy import ndimage
     enc = cand & ~mask
@@ -62,6 +68,8 @@ def remove_gray_background(rgb, tol=46, step=12):
         if part.sum() < h * w * 0.0008: continue
         px = c[sl][part]
         if px.std(axis=0).max() < 9: mask[sl] |= part
+    if open_px:   # erase thin stray structures (guide lines) thinner than ~2*open_px
+        mask = ~ndimage.binary_opening(~mask, iterations=open_px)
     # drop specks: keep only the largest foreground component (+ anything bigger than 1% of it)
     lab, n = ndimage.label(~mask)
     if n > 1:
@@ -77,12 +85,13 @@ def main():
     ap.add_argument('--height', type=int, default=80)
     ap.add_argument('--colors', type=int, default=28)
     ap.add_argument('--flip', action='store_true')
+    ap.add_argument('--dropgray', action='store_true'); ap.add_argument('--dropcyan', action='store_true'); ap.add_argument('--open', type=int, default=0)
     ap.add_argument('--preview', type=int, default=0)
     ap.add_argument('--outline', default='#141626')
     a = ap.parse_args()
     rgb = np.array(Image.open(a.src).convert('RGB'))
     if a.flip: rgb = rgb[:, ::-1]
-    fg = remove_gray_background(rgb)
+    fg = remove_gray_background(rgb, dropgray=a.dropgray, dropcyan=a.dropcyan, open_px=a.open)
     ys, xs = np.nonzero(fg)
     y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
     rgba = np.dstack([rgb, (fg * 255).astype(np.uint8)])[y0:y1, x0:x1]
