@@ -13,7 +13,9 @@
  *     jugg     Juggernaut XL v9, 30 steps, no LoRA                 (painterly / realistic, slow)
  *   [--sampler dpmpp_2m] [--scheduler karras] [--lora 0 = no LoRA]
  *   Likeness from reference images (IP-Adapter, SDXL presets only; needs ComfyUI_IPAdapter_plus):
- *     --ipref <img> [--ipref <img2> ...] [--ipw 0.8] [--ipend 0.9]   the refs' look is copied into the result */
+ *     --ipref <img> [--ipref <img2> ...] [--ipw 0.8] [--ipend 0.9]   the refs' look is copied into the result
+ *     --ipmask <img>:<mask.png> ...   per-region references: each ref only influences where its mask is white
+ *                                     (armor pieces: helmet → head area, chest → torso area, ...) */
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
@@ -46,6 +48,7 @@ function comfyKey() {
 }
 const init = opt('init', null);
 const iprefs = args.flatMap((a, i) => (a === '--ipref' ? [args[i + 1]] : []));
+const ipmasks = args.flatMap((a, i) => (a === '--ipmask' ? [args[i + 1].split(/:(?=[^:]*$)/)] : []));   // [ref, mask]
 const ipW = +opt('ipw', 0.8), ipEnd = +opt('ipend', 0.9);
 const INPUT_DIR = opt('inputDir', 'D:/Comfy-Desktop/ComfyUI-Shared/input');
 let initName = null;
@@ -67,7 +70,7 @@ const gptWf = () => {
   return w;
 };
 const MC = loraW ? '2' : '1';   // model / clip source
-const MODEL = iprefs.length ? 'ipa' : MC;   // the sampler takes the IP-Adapter-patched model when refs are given
+const MODEL = ipmasks.length ? 'ipm' + (ipmasks.length - 1) : iprefs.length ? 'ipa' : MC;   // the sampler takes the IP-Adapter-patched model when refs are given
 const wf = engine === 'gpt' ? gptWf() : {
   1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: ckpt } },
   // --lora 0 → no LoRA node (an SD1.5 LoRA cannot be applied to an SDXL checkpoint)
@@ -78,7 +81,20 @@ const wf = engine === 'gpt' ? gptWf() : {
   6: { class_type: 'KSampler', inputs: { model: [MODEL, 0], positive: ['3', 0], negative: ['4', 0], latent_image: init ? ['10', 0] : ['5', 0],
     seed, steps: +opt('steps', 26), cfg: +opt('cfg', 7), sampler_name: opt('sampler', 'dpmpp_2m'), scheduler: opt('scheduler', 'karras'), denoise: init ? +opt('denoise', 0.6) : 1 } },
   7: { class_type: 'VAEDecode', inputs: { samples: ['6', 0], vae: ['1', 2] } },
-  ...(iprefs.length ? (() => {
+  ...(ipmasks.length ? (() => {
+    // chained IP-Adapters, each limited to its region by an attention mask
+    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MC, 0], preset: 'PLUS (high strength)' } } };
+    let model = ['ipl', 0];
+    ipmasks.forEach(([ref, mask], i) => {
+      w['ipmr' + i] = { class_type: 'LoadImage', inputs: { image: toInput(ref) } };
+      w['ipmm' + i] = { class_type: 'LoadImageMask', inputs: { image: toInput(mask), channel: 'red' } };
+      w['ipm' + i] = { class_type: 'IPAdapterAdvanced', inputs: { model, ipadapter: ['ipl', 1], image: ['ipmr' + i, 0], attn_mask: ['ipmm' + i, 0],
+        weight: ipW, weight_type: 'linear', combine_embeds: 'concat', start_at: 0, end_at: ipEnd, embeds_scaling: 'V only' } };
+      model = ['ipm' + i, 0];
+    });
+    return w;
+  })() : {}),
+  ...(iprefs.length && !ipmasks.length ? (() => {
     const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MC, 0], preset: 'PLUS (high strength)' } } };
     iprefs.forEach((f, i) => { w['ipr' + i] = { class_type: 'LoadImage', inputs: { image: toInput(f) } }; });
     let img = ['ipr0', 0];
