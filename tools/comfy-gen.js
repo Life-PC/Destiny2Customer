@@ -70,7 +70,8 @@ const gptWf = () => {
   return w;
 };
 const MC = loraW ? '2' : '1';   // model / clip source
-const MODEL = ipmasks.length ? 'ipm' + (ipmasks.length - 1) : iprefs.length ? 'ipa' : MC;   // the sampler takes the IP-Adapter-patched model when refs are given
+const ipRegional = opt('ipmode', 'chain') === 'regional';   // one adapter patch with per-region params (lighter than chaining)
+const MODEL = ipmasks.length ? (ipRegional ? 'ipfp' : 'ipm' + (ipmasks.length - 1)) : iprefs.length ? 'ipa' : MC;   // the sampler takes the IP-Adapter-patched model when refs are given
 const wf = engine === 'gpt' ? gptWf() : {
   1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: ckpt } },
   // --lora 0 → no LoRA node (an SD1.5 LoRA cannot be applied to an SDXL checkpoint)
@@ -83,7 +84,19 @@ const wf = engine === 'gpt' ? gptWf() : {
   7: { class_type: 'VAEDecode', inputs: { samples: ['6', 0], vae: ['1', 2] } },
   ...(ipmasks.length ? (() => {
     // chained IP-Adapters, each limited to its region by an attention mask
-    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MC, 0], preset: 'PLUS (high strength)' } } };
+    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MC, 0], preset: opt('ippreset', 'PLUS (high strength)') } } };   // --ippreset "STANDARD (medium strength)" = lighter, faster
+    if (ipRegional) {
+      const params = {};
+      ipmasks.forEach(([ref, mask], i) => {
+        w['ipmr' + i] = { class_type: 'LoadImage', inputs: { image: toInput(ref) } };
+        w['ipmm' + i] = { class_type: 'LoadImageMask', inputs: { image: toInput(mask), channel: 'red' } };
+        w['iprc' + i] = { class_type: 'IPAdapterRegionalConditioning', inputs: { image: ['ipmr' + i, 0], mask: ['ipmm' + i, 0], image_weight: ipW, prompt_weight: 1.0, weight_type: 'linear', start_at: 0, end_at: ipEnd } };
+        params['params_' + (i + 1)] = ['iprc' + i, 0];
+      });
+      w.ipcp = { class_type: 'IPAdapterCombineParams', inputs: params };
+      w.ipfp = { class_type: 'IPAdapterFromParams', inputs: { model: ['ipl', 0], ipadapter: ['ipl', 1], ipadapter_params: ['ipcp', 0], combine_embeds: 'concat', embeds_scaling: 'V only' } };
+      return w;
+    }
     let model = ['ipl', 0];
     ipmasks.forEach(([ref, mask], i) => {
       w['ipmr' + i] = { class_type: 'LoadImage', inputs: { image: toInput(ref) } };
