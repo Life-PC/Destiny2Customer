@@ -22,8 +22,12 @@ const http = require('http');
 
 const args = process.argv.slice(2);
 const PRESETS = {
+  xlpixel8: { ckpt: 'DreamShaperXL_Lightning.safetensors', unet: 'DreamShaperXL_Lightning_unet_fp8.safetensors', steps: 8, cfg: 2, sampler: 'dpmpp_sde', scheduler: 'karras', loraName: 'pixel-art-xl.safetensors', lora: 1, w: 1024, h: 1024 },   // same look as xlpixel, fp8 UNet
   xl: { ckpt: 'DreamShaperXL_Lightning.safetensors', steps: 6, cfg: 2, sampler: 'dpmpp_sde', scheduler: 'karras', lora: 0, w: 1344, h: 768 },
   xlpixel: { ckpt: 'DreamShaperXL_Lightning.safetensors', steps: 8, cfg: 2, sampler: 'dpmpp_sde', scheduler: 'karras', loraName: 'pixel-art-xl.safetensors', lora: 1, w: 1344, h: 768 },
+  // SD1.5 fits entirely in 4GB VRAM: ~20x faster than SDXL on a GTX 1650. Pixel LoRA + a few-step speed LoRA.
+  sd15hyper: { ckpt: 'DreamShaper_8_pruned.safetensors', steps: 8, cfg: 1, sampler: 'euler', scheduler: 'sgm_uniform', loraName: 'PixelArtRedmond15V-PixelArt-PIXARFK.safetensors', lora: 0.8, lora2Name: 'Hyper-SD15-8steps-lora.safetensors', lora2: 1, w: 768, h: 768 },
+  sd15lcm: { ckpt: 'DreamShaper_8_pruned.safetensors', steps: 8, cfg: 1.2, sampler: 'lcm', scheduler: 'sgm_uniform', loraName: 'PixelArtRedmond15V-PixelArt-PIXARFK.safetensors', lora: 0.8, lora2Name: 'lcm-lora-sdv1-5.safetensors', lora2: 1, w: 768, h: 768 },
   jugg: { ckpt: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', steps: 30, cfg: 4.5, sampler: 'dpmpp_2m_sde', scheduler: 'karras', lora: 0, w: 1344, h: 768 },
 };
 const preset = (() => { const i = args.indexOf('--preset'); return i >= 0 ? PRESETS[args[i + 1]] || {} : {}; })();
@@ -69,13 +73,21 @@ const gptWf = () => {
   w.s = { class_type: 'SaveImage', inputs: { images: ['g', 0], filename_prefix: 'd2mobius/' + path.basename(out, path.extname(out)) } };
   return w;
 };
-const MC = loraW ? '2' : '1';   // model / clip source
+const lora2 = opt('lora2Name', null), lora2W = +opt('lora2', 0);
+// --unet <file in diffusion_models> [--unetDtype fp8_e4m3fn]: load the denoiser separately (fp8 halves VRAM so SDXL fits in 4GB);
+// text encoders and VAE still come from the checkpoint
+const unet = opt('unet', null);
+const BASE = unet ? '1u' : '1';
+const MC = lora2 && lora2W ? '2b' : loraW ? '2' : '1';   // clip source
+const MM = lora2 && lora2W ? '2b' : loraW ? '2' : BASE;  // model source
 const ipRegional = opt('ipmode', 'chain') === 'regional';   // one adapter patch with per-region params (lighter than chaining)
-const MODEL = ipmasks.length ? (ipRegional ? 'ipfp' : 'ipm' + (ipmasks.length - 1)) : iprefs.length ? 'ipa' : MC;   // the sampler takes the IP-Adapter-patched model when refs are given
+const MODEL = ipmasks.length ? (ipRegional ? 'ipfp' : 'ipm' + (ipmasks.length - 1)) : iprefs.length ? 'ipa' : MM;   // the sampler takes the IP-Adapter-patched model when refs are given
 const wf = engine === 'gpt' ? gptWf() : {
   1: { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: ckpt } },
+  ...(unet ? { '1u': { class_type: 'UNETLoader', inputs: { unet_name: unet, weight_dtype: opt('unetDtype', 'fp8_e4m3fn') } } } : {}),
   // --lora 0 → no LoRA node (an SD1.5 LoRA cannot be applied to an SDXL checkpoint)
-  ...(loraW ? { 2: { class_type: 'LoraLoader', inputs: { model: ['1', 0], clip: ['1', 1], lora_name: lora, strength_model: loraW, strength_clip: loraW } } } : {}),
+  ...(loraW ? { 2: { class_type: 'LoraLoader', inputs: { model: [BASE, 0], clip: ['1', 1], lora_name: lora, strength_model: loraW, strength_clip: loraW } } } : {}),
+  ...(lora2 && lora2W ? { '2b': { class_type: 'LoraLoader', inputs: { model: [loraW ? '2' : BASE, 0], clip: [loraW ? '2' : '1', 1], lora_name: lora2, strength_model: lora2W, strength_clip: lora2W } } } : {}),
   3: { class_type: 'CLIPTextEncode', inputs: { clip: [MC, 1], text: prompt } },
   4: { class_type: 'CLIPTextEncode', inputs: { clip: [MC, 1], text: neg } },
   5: { class_type: 'EmptyLatentImage', inputs: { width: W, height: H, batch_size: 1 } },
@@ -84,7 +96,7 @@ const wf = engine === 'gpt' ? gptWf() : {
   7: { class_type: 'VAEDecode', inputs: { samples: ['6', 0], vae: ['1', 2] } },
   ...(ipmasks.length ? (() => {
     // chained IP-Adapters, each limited to its region by an attention mask
-    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MC, 0], preset: opt('ippreset', 'PLUS (high strength)') } } };   // --ippreset "STANDARD (medium strength)" = lighter, faster
+    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MM, 0], preset: opt('ippreset', 'PLUS (high strength)') } } };   // --ippreset "STANDARD (medium strength)" = lighter, faster
     if (ipRegional) {
       const params = {};
       ipmasks.forEach(([ref, mask], i) => {
@@ -108,7 +120,7 @@ const wf = engine === 'gpt' ? gptWf() : {
     return w;
   })() : {}),
   ...(iprefs.length && !ipmasks.length ? (() => {
-    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MC, 0], preset: 'PLUS (high strength)' } } };
+    const w = { ipl: { class_type: 'IPAdapterUnifiedLoader', inputs: { model: [MM, 0], preset: 'PLUS (high strength)' } } };
     iprefs.forEach((f, i) => { w['ipr' + i] = { class_type: 'LoadImage', inputs: { image: toInput(f) } }; });
     let img = ['ipr0', 0];
     for (let i = 1; i < iprefs.length; i++) { w['ipb' + i] = { class_type: 'ImageBatch', inputs: { image1: img, image2: ['ipr' + i, 0] } }; img = ['ipb' + i, 0]; }

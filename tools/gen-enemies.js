@@ -4,7 +4,8 @@
  *     refs:   art/refs/enemies/<key>/ref1.jpg, ref2.jpg   (likeness)
  *     under:  art/refs/under/<key>.png                     (pose, facing left — exported from the game)
  *     out:    art/gen/enemies/<key>_<seed>.png             → pick one, then tools/import-enemy.py <png> <key>
- * Settings chosen with the user on the Dreg test: --preset xlpixel, IP-Adapter 0.6, img2img denoise 0.55. */
+ * Settings chosen with the user on the Dreg test: --preset xlpixel, IP-Adapter 0.6, img2img denoise 0.55.
+ * Rendered at 768px (--size): same look after the 80-dot import, ~2 min instead of ~4.5 min on a GTX 1650. */
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
@@ -15,6 +16,7 @@ const flag = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[
 const dry = args.includes('--dry');
 const seeds = flag('seeds', '1').split(',').map(Number);
 const ipw = flag('ipw', '0.6'), denoise = flag('denoise', '0.55');
+const SIZE = +flag('size', 768);
 
 const STYLE = 'pixel art, game sprite, full body, facing left, side view, battle stance, detailed pixel shading, dark sci-fi, destiny 2 enemy, plain flat gray background';
 const NEG = 'text, watermark, blurry, multiple characters, human face, cute, chibi, background scenery, realistic, photo, 3d render';
@@ -47,13 +49,19 @@ fs.mkdirSync(path.join(ROOT, 'art', 'gen', 'enemies'), { recursive: true });
 for (const k of todo) {
   const refDir = path.join(ROOT, 'art', 'refs', 'enemies', k);
   const refs = fs.existsSync(refDir) ? fs.readdirSync(refDir).filter(f => /^ref[12]\./.test(f)).map(f => path.join(refDir, f)) : [];
-  const under = path.join(ROOT, 'art', 'refs', 'under', k + '.png');
+  const under0 = path.join(ROOT, 'art', 'refs', 'under', k + '.png');
+  // img2img keeps the init image's size, so the underdrawing is resized to the render size first
+  const under = path.join(ROOT, 'art', 'refs', 'under' + SIZE, k + '.png');
+  if (fs.existsSync(under0) && !fs.existsSync(under)) {
+    fs.mkdirSync(path.dirname(under), { recursive: true });
+    execFileSync('python', ['-c', `from PIL import Image; Image.open(r'${under0}').convert('RGB').resize((${SIZE},${SIZE}), Image.Resampling.LANCZOS).save(r'${under}')`]);
+  }
   if (!refs.length || !fs.existsSync(under)) { console.warn(`skip ${k}: missing refs or underdrawing`); continue; }
   for (const seed of seeds) {
     const out = path.join(ROOT, 'art', 'gen', 'enemies', `${k}_${seed}.png`);
     if (fs.existsSync(out)) { console.log('exists', path.relative(ROOT, out)); continue; }
     const prompt = `${STYLE.replace('full body', 'full body ' + ENEMIES[k])}`;
-    const cmd = [path.join(__dirname, 'comfy-gen.js'), out, prompt, '--preset', 'xlpixel', '--w', '1024', '--h', '1024',
+    const cmd = [path.join(__dirname, 'comfy-gen.js'), out, prompt, '--preset', 'xlpixel', '--w', String(SIZE), '--h', String(SIZE),
       ...refs.flatMap(r => ['--ipref', r]), '--ipw', ipw, '--init', under, '--denoise', denoise, '--neg', NEG, '--seed', String(1000 + seed * 7919)];
     console.log(`▶ ${k} seed ${seed}`);
     if (!dry) execFileSync('node', cmd, { stdio: 'inherit' });
