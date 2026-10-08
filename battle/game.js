@@ -1640,7 +1640,7 @@
 
     // ?art=hd → smooth illustrated enemies (art/enemies_hd, SD1.5 test set); default → pixel sprites (art/enemies)
     const ENEMY_ART_DIR = new URLSearchParams(location.search).get('art') === 'hd' ? 'enemies_hd' : 'enemies';
-    const ENEMY_ART_V = 1;   // bump when sprites in art/enemies are regenerated
+    const ENEMY_ART_V = 2;   // bump when sprites in art/enemies are regenerated
     const ART_CACHE = new Map();
     function enemyArt(key) {
       if (!ART_CACHE.has(key)) ART_CACHE.set(key, new Promise(res => {
@@ -1664,6 +1664,7 @@
           // painted pixel sprite (art/enemies/<key>.png, from tools/gen-enemies.js) when it exists; procedural art otherwise
           const im = await enemyArt(e.key);
           e.sprites = im ? [im, im, im] : [0, 1, 2].map(gl => Sprites.enemySprite(e.tpl, e.fac, e.weak, e.pal, gl));
+          e.sprBroken = im ? await enemyArt(e.key + '_broken') : null;   // optional look while BREAK is active (e.g. headless goblin)
         }
       }));
       B.target = Math.max(0, B.enemies.findIndex(e => e.boss));
@@ -2148,7 +2149,7 @@
       g.beginPath(); g.ellipse(e.x, e.y + 1, w * 0.32, 3 * e.depth, 0, 0, Math.PI * 2); g.fill();
       if (e.boss) { g.fillStyle = (e.aura || '#ffd28a') + '30'; g.beginPath(); g.ellipse(e.x, b.cy, w * 0.6, h * 0.55, 0, 0, Math.PI * 2); g.fill(); }
       const glow = Math.floor((Math.sin(B.time / 260 + e.phase) + 1) * 1.5) % 3;
-      const spr = e.sprites[glow] || e.sprites[0];
+      const spr = (e.broken > 0 && e.sprBroken) || e.sprites[glow] || e.sprites[0];
       const sink = e.hp <= 0 ? (1 - e.dieT) * 10 : 0;
       if (spr.illus || spr.pix) {
         // smooth illustration / painted pixel sprite: whole-image breathing + top sway (row slicing would band when downscaled)
