@@ -33,7 +33,8 @@
     servitor: { n: 'サーヴィター', fac: 'fallen', tpl: 'servitor', hp: 1300, atk: 80, spd: 4, brk: 60, weak: 'void', pal: { B: '#3a3a4c', b: '#24242f', H: '#6a6a88', D: '#120f1c', E: '#9b5cff' } },
     // Vex — brass, milky white, red eye
     goblin:   { n: 'ゴブリン', fac: 'vex', tpl: 'goblin', hp: 480, atk: 50, spd: 2, brk: 25, weak: 'void' },
-    hobgoblin:{ n: 'ホブゴブリン', fac: 'vex', tpl: 'goblin', hp: 700, atk: 85, spd: 3, brk: 40, weak: 'arc', scale: 1.05 },   // long-range sniper
+    fanatic:  { n: 'ファナティック', fac: 'vex', tpl: 'goblin', hp: 600, atk: 90, spd: 3, brk: 35, weak: 'arc', scale: 1.05 },   // long-range sniper
+    hobgoblin:{ n: 'ホブゴブリン', fac: 'vex', tpl: 'goblin', hp: 750, atk: 75, spd: 3, brk: 45, weak: 'solar', scale: 1.05 },   // clawed brute
     harpy:    { n: 'ハーピー', fac: 'vex', tpl: 'harpy', hp: 420, atk: 55, spd: 2, brk: 20, weak: 'solar', scale: 0.85 },
     minotaur: { n: 'ミノタウロス', fac: 'vex', tpl: 'minotaur', hp: 1700, atk: 105, spd: 4, brk: 80, weak: 'void', scale: 1.15, pal: { D: '#1f2a4a' } },
     hydra:    { n: 'ハイドラ', fac: 'vex', tpl: 'hydra', hp: 2000, atk: 110, spd: 4, brk: 90, weak: 'arc', scale: 1.2 },
@@ -90,7 +91,7 @@
       waves: [['legionary', 'goblin', 'goblin'], ['minotaur', 'harpy'], ['b_protheon', 'harpy']],
       reward: 550, drop: { chance: 0.3, pool: 'armor' } },
     { id: 's5', no: '1-5', name: '庭園の世界', act: '庭園の世界', lv: 3.4,
-      waves: [['goblin', 'harpy', 'hobgoblin'], ['hydra', 'minotaur'], ['b_mind', 'harpy', 'harpy']],
+      waves: [['goblin', 'harpy', 'fanatic'], ['hydra', 'hobgoblin'], ['b_mind', 'harpy', 'harpy']],
       reward: 600, drop: { chance: 0.35, pool: 'weapon' } },
     { id: 's6', no: '1-6', name: '汚染', act: '汚染', lv: 4.0,
       waves: [['t_thrall', 't_thrall', 't_psion'], ['t_knight', 't_psion'], ['b_sedia', 't_thrall']],
@@ -99,7 +100,7 @@
       waves: [['thrall', 'acolyte', 'wizard'], ['knight', 'knight'], ['b_vorgeth', 'acolyte']],
       reward: 800, drop: { chance: 0.4, pool: 'weapon' } },
     { id: 's8', no: '1-8', name: 'ガラスの間', act: 'ガラスの間', lv: 5.5,
-      waves: [['goblin', 'hobgoblin', 'harpy'], ['minotaur', 'hydra'], ['b_mobius', 'harpy', 'minotaur']],
+      waves: [['goblin', 'fanatic', 'harpy'], ['hobgoblin', 'minotaur', 'hydra'], ['b_mobius', 'harpy', 'minotaur']],
       reward: 1200, drop: { chance: 0.5, pool: 'exotic' } },
     // Farming stage (repeatable, glimmer-rich)
     { id: 'f1', no: 'EX', name: '戦場: 雹(グリマー回収)', act: '戦場: 雹', lv: 2.5, farm: true,
