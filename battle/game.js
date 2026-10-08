@@ -1875,12 +1875,36 @@
       await sleep(400);
     }
 
+    // self-destruct (Hobgoblin): unavoidable heavy hit, the enemy is gone afterwards (no drop)
+    async function selfDestruct(e) {
+      const b = eBox(e);
+      banner(`${e.n} 自爆!`);
+      e.atkT = 1; e.hitT = 1;
+      await sleep(260);
+      burst(e.x, b.cy, '#ffffff', 36, 5); burst(e.x, b.cy, Sprites.ELEMENT_COLORS[e.weak] || '#ffb04a', 30, 4);
+      B.fx.push({ type: 'guard', t: 0, dur: 600, color: '#ffb04a' });
+      let d = Math.max(e.atkV * 4, p.maxHp * 0.35) * (1 - p.dr);
+      if (p.buffs.barricade) d *= 0.5;
+      if (p.buffs.armor) d *= 1 - p.buffs.armor.v;
+      d = Math.round(d);
+      if (p.shield) { const ab = Math.min(p.shield, d); p.shield -= ab; d -= ab; if (ab) popup(PX + 14, PY - 104, `-${ab} 🛡`, '#c9a6ff'); }
+      p.hp = Math.max(0, p.hp - d);
+      B.pHitT = 1; B.shake = 12; B.hurtT = 1;
+      if (!B.motion) setMotion('hit');
+      popup(PX, PY - 90, '-' + d, '#ff5d5d', true);
+      addSuper(8);
+      log(`${e.n} が自爆! ${d} ダメージ`);
+      e.hp = 0; e.dieT = 1;
+      await sleep(420);
+    }
+
     // ---- enemy phase ----
     async function enemyPhase() {
       for (const e of alive()) {
         if (e.broken > 0) { e.broken--; if (e.broken === 0) e.bk = Content.enemyDef(e.key).brk; continue; }
         e.counter--;
         if (e.counter > 0) continue;
+        if (e.bomb) { await selfDestruct(e); if (p.hp <= 0) return; continue; }
         e.counter = e.spd;
         e.atkT = 1;
         await sleep(180);
@@ -1930,6 +1954,11 @@
         retarget();
         await enemyPhase();
         if (p.hp <= 0) { B.done = 'lose'; B.banner = { text: 'DEFEATED', t: 0, dur: 99999, color: '#ff5d5d' }; return finish(); }
+        if (!alive().length) {   // the last enemy blew itself up
+          await sleep(400);
+          if (B.wave + 1 < st.waves.length) { B.wave++; await loadWave(); }
+          else { B.done = 'win'; B.banner = { text: 'MISSION CLEAR', t: 0, dur: 99999, color: '#ffd28a' }; return finish(); }
+        }
       }
       B.busy = false; updateHud();
     }
@@ -2043,7 +2072,7 @@
         $('.m-cnt').textContent = t.broken > 0 ? 'B' : t.counter;
         const wc = Sprites.ELEMENT_COLORS[t.weak];
         $('.m-tinfo').innerHTML = `<span style="color:${wc}">${elIcon(t.weak) || `<i style="background:${wc}"></i>`}${ELEMENT_NAME[t.weak]}弱点</span>`
-          + (t.boss ? '<span class="bossc">ボス</span>' : '') + (t.broken > 0 ? '<span class="brkc">BREAK中 · ダメージ2倍</span>' : '');
+          + (t.boss ? '<span class="bossc">ボス</span>' : '') + (t.bomb && t.broken <= 0 ? `<span class="bombc">自爆まで ${t.counter}</span>` : '') + (t.broken > 0 ? '<span class="brkc">BREAK中 · ダメージ2倍</span>' : '');
       }
       // ability cards / weapons: lit cost segments, usable state
       $$('.abtn[data-id]').forEach(b => {
@@ -2174,9 +2203,10 @@
       bar(ux - bw / 2, top, bw, 3, e.hp / e.maxHp, '#ff5d5d', '#300');
       bar(ux - bw / 2, top + 4.5, bw, 2, e.broken > 0 ? 1 : e.bk / Content.enemyDef(e.key).brk, e.broken > 0 ? '#ffd84a' : Sprites.ELEMENT_COLORS[e.weak], '#111');
       const cx = ux + bw / 2 + 6;
-      g.fillStyle = e.broken > 0 ? '#ffd84a' : e.counter <= 1 ? '#ff3b3b' : '#1c2433';
+      const danger = e.counter <= 1 || (e.bomb && (e.counter <= 2 || Math.sin(B.time / 120) > 0));   // bombs blink red
+      g.fillStyle = e.broken > 0 ? '#ffd84a' : danger ? '#ff3b3b' : '#1c2433';
       g.beginPath(); g.arc(cx, top + 2.5, 4.5, 0, Math.PI * 2); g.fill();
-      txt(e.broken > 0 ? 'B' : String(e.counter), cx, top + 5, 7, e.broken > 0 || e.counter <= 1 ? '#000' : '#fff');
+      txt(e.broken > 0 ? 'B' : String(e.counter), cx, top + 5, 7, e.broken > 0 || danger ? '#000' : '#fff');
       if (i === B.target && !B.done) {
         const ty = b.y + b.h * 0.45;
         const k = (Math.sin(B.time / 160) + 1) * 2;

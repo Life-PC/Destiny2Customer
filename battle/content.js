@@ -34,7 +34,8 @@
     // Vex — brass, milky white, red eye
     goblin:   { n: 'ゴブリン', fac: 'vex', tpl: 'goblin', hp: 480, atk: 50, spd: 2, brk: 25, weak: 'void' },
     fanatic:  { n: 'ファナティック', fac: 'vex', tpl: 'goblin', hp: 600, atk: 90, spd: 3, brk: 35, weak: 'arc', scale: 1.05 },   // long-range sniper
-    hobgoblin:{ n: 'ホブゴブリン', fac: 'vex', tpl: 'goblin', hp: 750, atk: 75, spd: 3, brk: 45, weak: 'solar', scale: 1.05 },   // clawed brute
+    // bomb: counts down from spd and self-destructs at 0 for a heavy hit (BREAK pauses the countdown; kill it first)
+    hobgoblin:{ n: 'ホブゴブリン', fac: 'vex', tpl: 'goblin', hp: 650, atk: 70, spd: 4, brk: 35, weak: 'solar', scale: 1.05, bomb: true },
     harpy:    { n: 'ハーピー', fac: 'vex', tpl: 'harpy', hp: 420, atk: 55, spd: 2, brk: 20, weak: 'solar', scale: 0.85 },
     minotaur: { n: 'ミノタウロス', fac: 'vex', tpl: 'minotaur', hp: 1700, atk: 105, spd: 4, brk: 80, weak: 'void', scale: 1.15, pal: { D: '#1f2a4a' } },
     hydra:    { n: 'ハイドラ', fac: 'vex', tpl: 'hydra', hp: 2000, atk: 110, spd: 4, brk: 90, weak: 'arc', scale: 1.2 },
