@@ -28,11 +28,21 @@ const PRESETS = {
   // SD1.5 fits entirely in 4GB VRAM: ~20x faster than SDXL on a GTX 1650. Pixel LoRA + a few-step speed LoRA.
   sd15hyper: { ckpt: 'DreamShaper_8_pruned.safetensors', steps: 8, cfg: 1, sampler: 'euler', scheduler: 'sgm_uniform', loraName: 'PixelArtRedmond15V-PixelArt-PIXARFK.safetensors', lora: 0.8, lora2Name: 'Hyper-SD15-8steps-lora.safetensors', lora2: 1, w: 768, h: 768 },
   sd15lcm: { ckpt: 'DreamShaper_8_pruned.safetensors', steps: 8, cfg: 1.2, sampler: 'lcm', scheduler: 'sgm_uniform', loraName: 'PixelArtRedmond15V-PixelArt-PIXARFK.safetensors', lora: 0.8, lora2Name: 'lcm-lora-sdv1-5.safetensors', lora2: 1, w: 768, h: 768 },
+  // pixel-art checkpoints (Civitai): SD1.5 ones get the Hyper-SD 8-step LoRA for speed; Super PixelArt XL is a Lightning
+  // merge (author: DPM++ SDE Karras, 5 steps, CFG 1 → one model pass per step, so it is faster than xlpixel's CFG 2)
+  dspixel: { ckpt: 'dreamshaperPixelart_v10.safetensors', steps: 8, cfg: 1, sampler: 'euler', scheduler: 'sgm_uniform', lora: 0, lora2Name: 'Hyper-SD15-8steps-lora.safetensors', lora2: 1, w: 768, h: 768 },
+  pixnite: { ckpt: 'pixnite15PurePixel_v10.safetensors', steps: 8, cfg: 1, sampler: 'euler', scheduler: 'sgm_uniform', lora: 0, lora2Name: 'Hyper-SD15-8steps-lora.safetensors', lora2: 1, w: 768, h: 768 },
+  superpx: { ckpt: 'superPixelartXLMV20.safetensors', steps: 5, cfg: 1, sampler: 'dpmpp_sde', scheduler: 'karras', lora: 0, w: 768, h: 768 },
+  // Civitai SDXL pixel checkpoints (non-distilled: ~14 steps, real CFG). Pony / Illustrious need their quality tags (prefix).
+  pxdiffxl: { ckpt: 'pixelArtDiffusionXL_spriteShaper.safetensors', steps: 14, cfg: 5, sampler: 'dpmpp_2m', scheduler: 'karras', lora: 0, w: 768, h: 768, prefix: 'pixel art, 32 bit, ' },
+  rdxlpony: { ckpt: 'rdxlPixelArt_pony2.safetensors', steps: 14, cfg: 6, sampler: 'dpmpp_2m', scheduler: 'karras', lora: 0, w: 768, h: 768, prefix: 'score_9, score_8_up, score_7_up, pixel art, ' },
+  illupixel: { ckpt: 'illustriousPixelart_v6SeriesV60.safetensors', steps: 14, cfg: 5, sampler: 'euler_ancestral', scheduler: 'normal', lora: 0, w: 768, h: 768, prefix: 'masterpiece, best quality, pixel art, ' },
   jugg: { ckpt: 'Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors', steps: 30, cfg: 4.5, sampler: 'dpmpp_2m_sde', scheduler: 'karras', lora: 0, w: 1344, h: 768 },
 };
 const preset = (() => { const i = args.indexOf('--preset'); return i >= 0 ? PRESETS[args[i + 1]] || {} : {}; })();
 const opt = (k, d) => { const i = args.indexOf('--' + k); return i >= 0 ? args[i + 1] : (k in preset ? preset[k] : d); };
-const out = args[0], prompt = args[1];
+const prompt = args[1] && opt('prefix', '') + args[1];   // presets may add model-specific quality tags
+const out = args[0];
 if (!out || !prompt) { console.error('usage: comfy-gen.js <out.png> "<prompt>" [options]'); process.exit(1); }
 const HOST = { host: '127.0.0.1', port: +opt('port', 8188) };
 
